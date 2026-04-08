@@ -1,2 +1,2 @@
 # actions
-Reusable GitHub actions for all RS-PYTHON repositories.
+Reusable GitHub workflows and composite actions for all RS-PYTHON repositories.
