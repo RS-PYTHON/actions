@@ -34,8 +34,8 @@ on:
         type: boolean
         required: false
         default: true
-      run-pylint:
-        description: Should we run Pylint and Flake8 ? (static code analysers, only for Python projects)
+      ignore-linting-errors:
+        description: Ignore linting errors (pylint, flake8) ?
         type: boolean
         required: false
         default: false
@@ -131,38 +131,47 @@ jobs:
           format: table
           exit-code: 1
 
-#   run-linting:
-#     runs-on: ubuntu-latest
-#     name: Check linting (pylint, flake8)
-#     needs: changes
-#     if: ${{ needs.changes.outputs.code == 'true' }}
-#     steps:
-#       - uses: actions/checkout@v6
-#       - uses: ./.github/actions/poetry-install
-#         with:
-#           rm-plugin-dir: true
+  run-linting:
+    runs-on: ubuntu-latest
+    name: Check linting (pylint, flake8)
+    if: ${{ inputs.python-version != '' }} # only for python projects
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
 
-#       - name: Run pylint
-#         run: |
-#           set -x
-#           poetry run pylint "**/*.py" --output-format=colorized,parseable:./pylint-report.txt
+      - name: Install tools
+        run: pip install pylint flake8
 
-#       - name: Run flake8
-#         if: always()
-#         run: |
-#           set -x
-#           poetry run flake8 . || true # run next line even if fails
-#           poetry run flake8 . --output-file ./flake8-report.txt
+      - name: Run pylint
+        continue-on-error: ${{ inputs.ignore-linting-errors }}
+        run: |
+          set -x
+          pip show pylint
+          pylint "**/*.py" --output-format=colorized,parseable:./pylint-report.txt
 
-#       - name: Save reports
-#         uses: actions/upload-artifact@v7
-#         if: always()
-#         with:
-#           name: run-linting
-#           path: |
-#             ./flake8-report.txt
-#             ./pylint-report.txt
-#           retention-days: 1
+      - name: Run flake8
+        if: always()
+        continue-on-error: ${{ inputs.ignore-linting-errors }}
+        run: |
+          set -x
+          pip show flake8
+          flake8 . || true # run next line even if fails
+          flake8 . --output-file ./flake8-report.txt
+
+      - name: Save reports
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: run-linting
+          path: |
+            ./flake8-report.txt
+            ./pylint-report.txt
+          retention-days: 1
 
 #   run-typing:
 #     runs-on: ubuntu-latest

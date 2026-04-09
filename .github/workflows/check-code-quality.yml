@@ -32,10 +32,9 @@ jobs:
 
         caller-repository: RS-PYTHON/rs-testmeans
         caller-ref: refs/heads/develop
+        ignore-linting-errors: true
 
-    secrets:
-        # caller-token: ${{ github.token }}
-        inherit
+        python-version: ${{ vars.PYTHON_VERSION }}
 
     permissions:
       contents: write # for apache/skywalking-eyes/header
