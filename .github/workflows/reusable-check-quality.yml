@@ -29,37 +29,55 @@ on:
         description: Main python version (only for Python projects)
         type: string
         required: false
+        default: 3.13.12
       run-trivy:
         description: Should we run Trivy ? (security scanner)
         type: boolean
         required: false
         default: true
-      ignore-linting-errors:
-        description: Ignore linting errors (pylint, flake8) ?
+      ignore-bandit-errors:
         type: boolean
         required: false
         default: false
-      run-mypy:
-        description: Should we run Mypy ? (static type checker, only for Python projects)
+      ignore-flake8-errors:
         type: boolean
         required: false
         default: false
-      run-bandit:
-        description: Should we run Bandit ? (to find common security issues, only for Python projects)
+      ignore-mypy-errors:
         type: boolean
         required: false
         default: false
-      run-safety:
-        description: Should we run Safety ? (dependency vulnerability scanner, only for Python projects)
+      ignore-pylint-errors:
         type: boolean
         required: false
         default: false
-    # secrets:
-    #   caller-token:
-    #     description: $ {{ github.token }} coming from the calling workflow
-    #     required: true
+      ignore-safety-errors:
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      SAFETY_API_KEY:
+        required: true
 
 jobs:
+
+  paths-filter:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      py: ${{ steps.filter.outputs.py }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d
+        id: filter
+        with:
+          filters: |
+            py: ['**.py']
+
   check-pre-commit:
     runs-on: ubuntu-latest
     name: Check pre-commit
@@ -131,61 +149,95 @@ jobs:
           format: table
           exit-code: 1
 
-  run-linting:
+  run-python-tools:
     runs-on: ubuntu-latest
-    name: Check linting (pylint, flake8)
-    if: ${{ inputs.python-version != '' }} # only for python projects
+    name: Run Python tools
+    needs: paths-filter
+    if: ${{ needs.paths-filter.outputs.py == 'true' }} # only for python projects
+    env:
+      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [bandit, flake8, mypy, pylint, safety]
+        if: [always()]
+        include:
+          - tool: bandit
+            continue-on-error: ${{ inputs.ignore-bandit-errors }}
+            commands: |
+              if [[ -f pyproject.toml ]]; then
+                options="-c pyproject.toml"
+              fi
+              bandit $options -r . || true # run next line even if fails
+              bandit $options -r . -f json -o ./bandit-report.json
+
+          - tool: flake8
+            continue-on-error: ${{ inputs.ignore-flake8-errors }}
+            extra-packages: Flake8-pyproject
+            commands: |
+              flake8 . || true # run next line even if fails
+              flake8 . --output-file ./flake8-report.txt
+
+          - tool: mypy
+            continue-on-error: ${{ inputs.ignore-mypy-errors }}
+            commands: |
+              mypy --install-types --non-interactive --explicit-package-bases .
+
+          - tool: pylint
+            continue-on-error: ${{ inputs.ignore-pylint-errors }}
+            commands: |
+              pylint "**/*.py" --output-format=colorized,parseable:./pylint-report.txt
+
+          - tool: safety
+            if: github.actor == 'dependabot[bot]' # dependabot does not have access to secrets
+            continue-on-error: ${{ inputs.ignore-safety-errors }}
+            extra-packages: typer==0.16.0
+            commands: |
+              safety --key $SAFETY_API_KEY scan --detailed-output
+
     steps:
-      - uses: actions/checkout@v6
+      - if: ${{ matrix.if }}
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
-      - uses: actions/setup-python@v6
+
+      - if: ${{ matrix.if }}
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python-version }}
 
-      - name: Install tools
-        run: pip install pylint flake8
-
-      - name: Run pylint
-        continue-on-error: ${{ inputs.ignore-linting-errors }}
+      - if: ${{ matrix.if }}
+        name: Install ${{ matrix.tool }}
         run: |
           set -x
-          pip show pylint
-          pylint "**/*.py" --output-format=colorized,parseable:./pylint-report.txt
+          pip install ${{ matrix.tool }} ${{ matrix.extra-packages }}
+          pip list
 
-      - name: Run flake8
-        if: always()
-        continue-on-error: ${{ inputs.ignore-linting-errors }}
+      - if: ${{ matrix.if }}
+        name: Run ${{ matrix.tool }}
+        continue-on-error: ${{ matrix.continue-on-error }}
         run: |
           set -x
-          pip show flake8
-          flake8 . || true # run next line even if fails
-          flake8 . --output-file ./flake8-report.txt
+          pip show ${{ matrix.tool }}
+          ${{ matrix.commands }}
 
-      - name: Save reports
-        uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: run-linting
-          path: |
-            ./flake8-report.txt
-            ./pylint-report.txt
-          retention-days: 1
 
-#   run-typing:
-#     runs-on: ubuntu-latest
-#     name: Check typing (mypy)
-#     needs: changes
-#     if: ${{ needs.changes.outputs.code == 'true' }}
-#     steps:
-#       - uses: actions/checkout@v6
-#       - uses: ./.github/actions/poetry-install
+# TODO:
+#         if: always() && github.actor != 'dependabot[bot]' # dependabot does not have access to secrets
+#         env:
+#             SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+
+#       - name: Save reports as artifacts
+#         if: always()
+#         uses: actions/upload-artifact@v7
 #         with:
-#           rm-plugin-dir: true
-#       - name: Run mypy
-#         run: poetry run mypy --install-types --non-interactive --explicit-package-bases .
-#         shell: bash
+#           name: check-security
+#           path: |
+#             ./bandit-report.json
+#             ./trivy-results-fs.sarif
+#           retention-days: 1
+
 
 #   run-security:
 #     runs-on: ubuntu-latest

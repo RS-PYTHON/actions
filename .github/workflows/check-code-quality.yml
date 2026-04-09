@@ -27,14 +27,16 @@ jobs:
         # caller-repository: ${{ github.repository }}
         # caller-ref: ${{ github.ref }}
 
-        # caller-repository: RS-PYTHON/rs-server
-        # caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
+        caller-repository: RS-PYTHON/rs-server
+        caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
 
-        caller-repository: RS-PYTHON/rs-testmeans
-        caller-ref: refs/heads/develop
-        ignore-linting-errors: true
+        # caller-repository: RS-PYTHON/rs-testmeans
+        # caller-ref: refs/heads/develop
+        # ignore-pylint-errors: true
+        # ignore-mypy-errors: true
 
-        python-version: ${{ vars.PYTHON_VERSION }}
+    secrets:
+      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
 
     permissions:
       contents: write # for apache/skywalking-eyes/header
