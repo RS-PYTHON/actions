@@ -28,55 +28,70 @@ on:
       python-version:
         description: Main python version (only for Python projects)
         type: string
-        required: false
         default: 3.13.12
+      poetry-version:
+        description: Poetry version (when applicable)
+        type: string
+        default: 2.3.2
       run-trivy:
         description: Should we run Trivy ? (security scanner)
         type: boolean
-        required: false
         default: true
       ignore-bandit-errors:
         type: boolean
-        required: false
         default: false
       ignore-flake8-errors:
         type: boolean
-        required: false
         default: false
       ignore-mypy-errors:
         type: boolean
-        required: false
         default: false
       ignore-pylint-errors:
         type: boolean
-        required: false
         default: false
       ignore-safety-errors:
         type: boolean
-        required: false
         default: false
+      test-covered-dirs:
+        description: Directories covered by pytests, as a space-separated list
+        type: string
+        default: .
     secrets:
       SAFETY_API_KEY:
         required: true
 
 jobs:
 
-  paths-filter:
+  # Only keep the git repository name from caller-repository which is <github-organization>/<git-repo>
+  # See: https://stackoverflow.com/a/19482947
+  repo-name:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: read
+    name: Get Git repository name
     outputs:
-      py: ${{ steps.filter.outputs.py }}
+      value: ${{ steps.value.outputs.value }}
+    steps:
+      - id: value
+        run: |
+          set -x
+          org_repo=${{ inputs.caller-repository }}
+          echo value=${org_repo##*/}  >> $GITHUB_OUTPUT # keep value after the last /
+
+  find-paths:
+    runs-on: ubuntu-latest
+    name: Find paths in git repository
+    outputs:
+      py: ${{ steps.find.outputs.py }}
+      tests: ${{ steps.find.outputs.tests }}
     steps:
       - uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d
-        id: filter
-        with:
-          filters: |
-            py: ['**.py']
+      - id: find
+        run: |
+          set -x
+          echo py=$(python -c "import glob, json; json.dumps(print(glob.glob ('**/*.py', recursive=True)))")  >> $GITHUB_OUTPUT
+          echo tests=$(python -c "import glob, json; json.dumps(print(glob.glob ('**/tests/', recursive=True)))")  >> $GITHUB_OUTPUT
 
   check-pre-commit:
     runs-on: ubuntu-latest
@@ -152,18 +167,20 @@ jobs:
   run-python-tools:
     runs-on: ubuntu-latest
     name: Run Python tools
-    needs: paths-filter
-    if: ${{ needs.paths-filter.outputs.py == 'true' }} # only for python projects
+    needs: [repo-name, find-paths]
+    if: ${{ needs.find-paths.outputs.py != '[]' }} # only for python projects
     env:
       SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
     strategy:
       fail-fast: false
       matrix:
         tool: [bandit, flake8, mypy, pylint, safety]
-        if: [always()]
+
         include:
+          - if: always()
           - tool: bandit
             continue-on-error: ${{ inputs.ignore-bandit-errors }}
+            report-path: ./bandit-report.json
             commands: |
               if [[ -f pyproject.toml ]]; then
                 options="-c pyproject.toml"
@@ -174,6 +191,7 @@ jobs:
           - tool: flake8
             continue-on-error: ${{ inputs.ignore-flake8-errors }}
             extra-packages: Flake8-pyproject
+            report-path: ./flake8-report.txt
             commands: |
               flake8 . || true # run next line even if fails
               flake8 . --output-file ./flake8-report.txt
@@ -185,11 +203,12 @@ jobs:
 
           - tool: pylint
             continue-on-error: ${{ inputs.ignore-pylint-errors }}
+            report-path: ./pylint-report.txt
             commands: |
               pylint "**/*.py" --output-format=colorized,parseable:./pylint-report.txt
 
           - tool: safety
-            if: github.actor == 'dependabot[bot]' # dependabot does not have access to secrets
+            if: ${{ github.actor != 'dependabot[bot]' }} # dependabot does not have access to secrets
             continue-on-error: ${{ inputs.ignore-safety-errors }}
             extra-packages: typer==0.16.0
             commands: |
@@ -208,70 +227,166 @@ jobs:
           python-version: ${{ inputs.python-version }}
 
       - if: ${{ matrix.if }}
-        name: Install ${{ matrix.tool }}
+        name: Install and run ${{ matrix.tool }}
+        continue-on-error: ${{ matrix.continue-on-error }}
         run: |
           set -x
           pip install ${{ matrix.tool }} ${{ matrix.extra-packages }}
           pip list
-
-      - if: ${{ matrix.if }}
-        name: Run ${{ matrix.tool }}
-        continue-on-error: ${{ matrix.continue-on-error }}
-        run: |
-          set -x
-          pip show ${{ matrix.tool }}
           ${{ matrix.commands }}
 
+      - name: Save reports as artifacts
+        if: always() # even if the previous step ended in failure
+        continue-on-error: true # let the step fail if matrix.report-path is undefined
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.repo-name.outputs.value }}-${{ matrix.tool }}.report
+          path: ${{ matrix.report-path }}
+          retention-days: 1
 
-# TODO:
-#         if: always() && github.actor != 'dependabot[bot]' # dependabot does not have access to secrets
-#         env:
-#             SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+  run-all-pytests:
+    runs-on: ubuntu-latest
+    name: Run Pytest
+    needs: [repo-name, find-paths]
+    if: ${{ needs.find-paths.outputs.tests != '[]' }} # only if we have tests/ dirs
+    strategy:
+      fail-fast: true # one tests/ dir that fails will cancel the others
+      matrix:
+        tests-dir: ${{ fromJson(needs.find-paths.outputs.tests) }}
+        # only main python version
+        python-version: ["${{ inputs.python-version }}" ]
+        include:
+          - experimental: false
+        # test several python versions
+        # python-version: ["${{ inputs.python-version }}", 3.13t, 3.14, 3.15.0a2 ]
+        # include:
+        #   - experimental: false
+        #   - python-version: 3.13t # free-threaded mode, with the global interpreter lock (GIL) disabled
+        #     experimental: true
+        #   - python-version: 3.14
+        #     experimental: true
+        #   - python-version: 3.15.0a2
+        #     experimental: true
+    continue-on-error: ${{ matrix.experimental }}
 
-#       - name: Save reports as artifacts
-#         if: always()
-#         uses: actions/upload-artifact@v7
-#         with:
-#           name: check-security
-#           path: |
-#             ./bandit-report.json
-#             ./trivy-results-fs.sarif
-#           retention-days: 1
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - id: run
+        name: Install and test ${{ matrix.tests-dir }}
+        run: |
+          set -x
+          root_dir=$(pwd)
+          proj_dir=$(dirname ${{ matrix.tests-dir }}) # parent dir of the tests/ dir
+          cd $proj_dir
+
+          dash_dir=${proj_dir//\//-} # replace / by - in the current project dir name
+          [[ $dash_dir == . ]] && dash_dir=root # rename the . dir into root
+          echo dash_dir=$dash_dir >> $GITHUB_OUTPUT
+
+          # Check if the current tests/ dir has a pyproject.toml file that contains the "poetry" string
+          if grep -q "poetry" ./pyproject.toml; then
+            prefix="poetry run"
+
+            # Install poetry
+            pip install "poetry==${{ inputs.poetry-version }}"
+
+            # Regenerate the poetry.lock file for non-standard python versions
+            [[ "${{ matrix.python-version }}" != "${{ inputs.python-version }}" ]] && poetry lock --regenerate
+
+            # Install the poetry project from the current tests/dir
+            poetry install
+            poetry install --with dev || true
+            poetry -q run opentelemetry-bootstrap -a install || true # install otel instrumentation packages for dependencies
+          fi
+
+          $prefix pip list
+
+          # Set --cov args
+          for cov_dir in ${{ inputs.test-covered-dirs }}; do
+            cov_args="$cov_args --cov=$(realpath ${root_dir}/${cov_dir})"
+          done
+
+          # Run pytest from the root directory.
+          # -ra: Show extra test summary info
+          # --durations=N Show N slowest setup/test durations (N=0 for all)
+          # --durations-min=N Minimal duration in seconds for inclusion in slowest list
+          # --error-for-skips Treat skipped tests as errors
+          cd "$root_dir"
+          $(cd $proj_dir && $prefix which python) -m pytest ${{ matrix.tests-dir }} \
+            -ra \
+            --disable-pytest-warnings \
+            --color=yes \
+            --durations=0 \
+            --durations-min=0.05 \
+            --error-for-skips \
+            $cov_args \
+            --cov-append \
+            --cov-report=term \
+            --junit-xml=${root_dir}/junit-xml-report.${dash_dir}.xml
+
+          # Rename .coverage file
+          mv ${root_dir}/.coverage ${root_dir}/.coverage.${dash_dir}
+
+      - name: Save coverage reports as artifacts
+        if: always() # even if the previous step ended in failure
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.repo-name.outputs.value }}-pytest.${{ matrix.python-version}}.${{ steps.run.outputs.dash_dir }}
+          include-hidden-files: true
+          path: |
+            .coverage.*
+            junit-xml-report.*.xml
+          retention-days: 1
+
+  merge-pytests-cov:
+    runs-on: ubuntu-latest
+    name: Merge Pytest reports
+    needs: [repo-name, find-paths, run-all-pytests]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+
+      - name: Download pytest coverage reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ needs.repo-name.outputs.value }}-pytest.${{ inputs.python-version}}.*
+          merge-multiple: true
+
+      - name: Merge reports
+        run: |
+          set -x
+          ls -al
+          pip install coverage junitparser
+
+          # Merge the .coverage files and convert to xml
+          coverage combine
+          coverage xml -o cov-report.xml
+          coverage report -m # report coverage in this console
+
+          # Merge the junit reports
+          junitparser merge junit-xml-report.*.xml junit-xml-report.xml
+
+      - name: Save merged reports as artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.repo-name.outputs.value }}-pytest.${{ matrix.python-version}}
+          path: |
+            cov-report.xml
+            junit-xml-report.xml
+          retention-days: 1
 
 
-#   run-security:
-#     runs-on: ubuntu-latest
-#     name: Check security (bandit, safety, trivy)
-#     steps:
-#       - uses: actions/checkout@v6
-#       - uses: ./.github/actions/poetry-install
-#         with:
-#           rm-plugin-dir: true
 
-#       - id: bandit
-#         name: Run bandit
-#         run: |
-#           set -x
-#           poetry run bandit -c pyproject.toml -r . || true # run next line even if fails
-#           poetry run bandit -c pyproject.toml -r . -f json -o ./bandit-report.json
-#         shell: bash
-      # - name: Save reports as artifacts
-      #   if: always()
-      #   uses: actions/upload-artifact@v7
-      #   with:
-      #     name: run-security
-      #     path: |
-      #       ./bandit-report.json
-      #     retention-days: 1
-#       - id: safety
-#         name: Run safety
-#         if: always() && github.actor != 'dependabot[bot]' # dependabot does not have access to secrets
-#         env:
-#             SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
-#         run: |
-#           set -x
-#           poetry run safety --key $SAFETY_API_KEY scan --detailed-output
-#         shell: bash
 
 #   run-all-pytests:
 #     runs-on: ubuntu-latest

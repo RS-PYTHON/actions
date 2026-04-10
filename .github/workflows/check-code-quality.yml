@@ -30,14 +30,50 @@ jobs:
         caller-repository: RS-PYTHON/rs-server
         caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
 
-        # caller-repository: RS-PYTHON/rs-testmeans
-        # caller-ref: refs/heads/develop
-        # ignore-pylint-errors: true
-        # ignore-mypy-errors: true
-
     secrets:
       SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
 
+    permissions:
+      contents: write # for apache/skywalking-eyes/header
+      pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
+
+  # rs-testmeans:
+  #   name: rs-testmeans
+  #   uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+  #   with:
+  #       caller-repository: RS-PYTHON/rs-testmeans
+  #       caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
+  #       ignore-bandit-errors: true
+  #       ignore-flake8-errors: true
+  #       ignore-mypy-errors: true
+  #       ignore-pylint-errors: true
+  #   secrets:
+  #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+  #   permissions:
+  #     contents: write # for apache/skywalking-eyes/header
+  #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
+
+  # rs-client-libraries:
+  #   name: rs-client-libraries
+  #   uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+  #   with:
+  #       caller-repository: RS-PYTHON/rs-client-libraries
+  #       caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
+  #       test-covered-dirs: "rs_client rs_common rs_workflows"
+  #   secrets:
+  #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+  #   permissions:
+  #     contents: write # for apache/skywalking-eyes/header
+  #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
+
+  cadip-stac-extension:
+    name: cadip-stac-extension
+    uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+    with:
+        caller-repository: RS-PYTHON/cadip-stac-extension
+        caller-ref: main
+    secrets:
+      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
     permissions:
       contents: write # for apache/skywalking-eyes/header
       pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
