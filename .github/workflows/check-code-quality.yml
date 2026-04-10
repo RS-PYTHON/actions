@@ -20,22 +20,22 @@ on:
   workflow_dispatch:
 
 jobs:
-  call-reusable-workflow:
-    name: _
-    uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
-    with:
-        # caller-repository: ${{ github.repository }}
-        # caller-ref: ${{ github.ref }}
+  # call-reusable-workflow:
+  #   name: _
+  #   uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+  #   with:
+  #       # caller-repository: ${{ github.repository }}
+  #       # caller-ref: ${{ github.ref }}
 
-        caller-repository: RS-PYTHON/rs-server
-        caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
+  #       caller-repository: RS-PYTHON/rs-server
+  #       caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
 
-    secrets:
-      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
-
-    permissions:
-      contents: write # for apache/skywalking-eyes/header
-      pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
+  #   secrets:
+  #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+  #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  #   permissions:
+  #     contents: write # for apache/skywalking-eyes/header
+  #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
 
   # rs-testmeans:
   #   name: rs-testmeans
@@ -49,6 +49,7 @@ jobs:
   #       ignore-pylint-errors: true
   #   secrets:
   #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+  #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   #   permissions:
   #     contents: write # for apache/skywalking-eyes/header
   #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
@@ -62,9 +63,23 @@ jobs:
   #       test-covered-dirs: "rs_client rs_common rs_workflows"
   #   secrets:
   #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+  #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   #   permissions:
   #     contents: write # for apache/skywalking-eyes/header
   #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
+
+  opentelemetry-instrumentation-eopf:
+    name: opentelemetry-instrumentation-eopf
+    uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+    with:
+        caller-repository: RS-PYTHON/opentelemetry-instrumentation-eopf
+        caller-ref: main
+    secrets:
+      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    permissions:
+      contents: write # for apache/skywalking-eyes/header
+      pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
 
   cadip-stac-extension:
     name: cadip-stac-extension
@@ -74,6 +89,7 @@ jobs:
         caller-ref: main
     secrets:
       SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     permissions:
       contents: write # for apache/skywalking-eyes/header
       pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
