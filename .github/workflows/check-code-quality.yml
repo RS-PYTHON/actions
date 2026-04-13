@@ -28,11 +28,11 @@ on:
   push # TEMP !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 jobs:
-
   # Check quality of this current project by calling the reusable quality check from this same project.
   call-reusable-workflow:
     name: _
-    uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+    # uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+    uses: ./.github/workflows/reusable-check-quality.yml
     with:
         caller-repository: ${{ github.repository }}
         caller-ref: ${{ github.ref }}
@@ -44,23 +44,23 @@ jobs:
       contents: write # for apache/skywalking-eyes/header
       pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
 
-  rs-testmeans:
-    name: rs-testmeans
-    uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
-    with:
-        caller-repository: RS-PYTHON/rs-testmeans
-        caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
-        caller-ref_name: feat-rspy995/run-sonar-from-project-root
-        ignore-bandit-errors: true
-        ignore-flake8-errors: true
-        ignore-mypy-errors: true
-        ignore-pylint-errors: true
-    secrets:
-      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-    permissions:
-      contents: write # for apache/skywalking-eyes/header
-      pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
+  # rs-testmeans:
+  #   name: rs-testmeans
+  #   uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+  #   with:
+  #       caller-repository: RS-PYTHON/rs-testmeans
+  #       caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
+  #       caller-ref_name: feat-rspy995/run-sonar-from-project-root
+  #       ignore-bandit-errors: true
+  #       ignore-flake8-errors: true
+  #       ignore-mypy-errors: true
+  #       ignore-pylint-errors: true
+  #   secrets:
+  #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+  #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  #   permissions:
+  #     contents: write # for apache/skywalking-eyes/header
+  #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
 
   # rs-client-libraries:
   #   name: rs-client-libraries

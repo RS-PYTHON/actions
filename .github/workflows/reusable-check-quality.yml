@@ -79,44 +79,22 @@ on:
 
 jobs:
 
-  # Convert inputs into environment variables to tackle :
-  # https://sonarcloud.io/organizations/rs-python/rules?open=githubactions%3AS7630&rule_key=githubactions%3AS7630
-  env:
-    runs-on: ubuntu-latest
-    name: Setup environment
-    outputs:
-      caller-repository: ${{ steps.values.outputs.caller-repository }}
-      cov-dirs: ${{ steps.values.outputs.cov-dirs }}
-      poetry-version: ${{ steps.values.outputs.poetry-version }}
-      python-version: ${{ steps.values.outputs.python-version }}
-    steps:
-      - id: values
-        env:
-          caller-repository: ${{ inputs.caller-repository }}
-          cov-dirs: ${{ inputs.cov-dirs }}
-          poetry-version: ${{ inputs.poetry-version }}
-          python-version: ${{ inputs.python-version }}
-        run: |
-          echo caller-repository=${{ env.caller-repository }} >> $GITHUB_OUTPUT
-          echo cov-dirs=${{ env.cov-dirs }} >> $GITHUB_OUTPUT
-          echo poetry-version=${{ env.poetry-version }} >> $GITHUB_OUTPUT
-          echo python-version=${{ env.python-version }} >> $GITHUB_OUTPUT
-
   repo-name:
     runs-on: ubuntu-latest
     name: Get Git repository name
-    needs: env
     outputs:
       # Only keep the git repository name from caller-repository which is <github-organization>/<git-repo>
-      value: ${{ steps.values.outputs.value }}
+      value: ${{ steps.setup.outputs.value }}
 
       # <github-organization>_<git-repo>, used by SonarQube
-      sonar: ${{ steps.values.outputs.sonar }}
+      sonar: ${{ steps.setup.outputs.sonar }}
+    env:
+        caller-repository: ${{ inputs.caller-repository }}
     steps:
-      - id: values
+      - id: setup
         run: |
           set -x
-          org_repo=${{ needs.env.outputs.caller-repository }}
+          org_repo=${{ env.caller-repository }}
 
           # See: https://stackoverflow.com/a/19482947
           echo value=${org_repo##*/} >> $GITHUB_OUTPUT # keep value after the last /
@@ -295,7 +273,7 @@ jobs:
   run-all-pytests:
     runs-on: ubuntu-latest
     name: Run Pytest
-    needs: [env, repo-name, find-paths]
+    needs: [repo-name, find-paths]
     if: ${{ needs.find-paths.outputs.tests != '[]' }} # only if we have tests/ dirs
     strategy:
       fail-fast: true # one tests/ dir that fails will cancel the others
@@ -329,6 +307,10 @@ jobs:
 
       - id: run
         name: Install and test ${{ matrix.tests-dir }}
+        env:
+          cov-dirs: ${{ inputs.cov-dirs }}
+          poetry-version: ${{ inputs.poetry-version }}
+          python-version: ${{ inputs.python-version }}
         run: |
           set -x
           root_dir=$(pwd)
@@ -344,10 +326,10 @@ jobs:
             prefix="poetry run"
 
             # Install poetry
-            pip install "poetry==${{ needs.env.outputs.poetry-version }}"
+            pip install "poetry==${{ env.poetry-version }}"
 
             # Regenerate the poetry.lock file for non-standard python versions
-            [[ "${{ matrix.python-version }}" != "${{ needs.env.outputs.python-version }}" ]] && poetry lock --regenerate
+            [[ "${{ matrix.python-version }}" != "${{ env.python-version }}" ]] && poetry lock --regenerate
 
             # Install the poetry project from the current tests/dir
             poetry install
@@ -357,7 +339,7 @@ jobs:
           else
             prefix="uv run"
             rm -rf ./.venv
-            pip install uv && uv venv --python ${{ needs.env.outputs.python-version }} && uv pip install pip
+            pip install uv && uv venv --python ${{ env.python-version }} && uv pip install pip
             uv pip install .
             uv pip install .[dev] || true
             # NOTE: the only use case for .[instruments] is opentelemetry-instrumentation-eopf. Maybe we should configure this.
@@ -369,7 +351,7 @@ jobs:
           $prefix pip list
 
           # Set --cov args, replace ',' by ' '
-          cov_dirs=${{ needs.env.outputs.cov-dirs }}
+          cov_dirs=${{ env.cov-dirs }}
           for cov_dir in ${cov_dirs//,/ }; do
             cov_args="$cov_args --cov=$(realpath ${root_dir}/${cov_dir})"
           done
