@@ -25,6 +25,10 @@ on:
         description: $ {{ github.ref }} coming from the calling workflow
         type: string
         required: true
+      caller-ref_name:
+        description: $ {{ github.ref_name }} coming from the calling workflow
+        type: string
+        required: true
       python-version:
         description: Main python version (only for Python projects)
         type: string
@@ -52,15 +56,26 @@ on:
       ignore-safety-errors:
         type: boolean
         default: false
-      test-covered-dirs:
-        description: Directories covered by pytests, as a space-separated list
+      cov-dirs:
+        description: Directories covered by pytests, as a comma-separated list e.g. 'dir1,dir2'
         type: string
         default: .
+      sonar-cov-exclusions:
+        description: "'sonar.coverage.exclusions' excludes some files from the test coverage metrics but those files are
+                     still analyzed other metrics, duplications, coding rules... "
+        type: string
+        default: tests,tests/**,**/tests/**
+      sonar-exclusions:
+        description: "'sonar.exclusions' completely excludes some files from the analysis: those files don't appear
+                     at all in SonarQube."
+        type: string
+        default: tests,tests/**,**/tests/**
+
     secrets:
       SAFETY_API_KEY:
         required: true
       SONAR_TOKEN:
-        required: false
+        required: true
 
 jobs:
 
@@ -131,8 +146,8 @@ jobs:
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
-      - name: check License Header
-        uses: apache/skywalking-eyes/header@8c96ee223558797cdd9eba82c0919258e1cf2dad # main
+      - name: Check License Header
+        uses: apache/skywalking-eyes/header@8c96ee223558797cdd9eba82c0919258e1cf2dad
         with:
           log: debug
           mode: check
@@ -313,13 +328,25 @@ jobs:
             # Install the poetry project from the current tests/dir
             poetry install
             poetry install --with dev || true
-            poetry -q run opentelemetry-bootstrap -a install || true # install otel instrumentation packages for dependencies
+
+          # Else install with uv (faster than pip)
+          else
+            prefix="uv run"
+            rm -rf ./.venv
+            pip install uv && uv venv --python ${{ inputs.python-version }} && uv pip install pip
+            uv pip install .
+            uv pip install .[dev] || true
+            # NOTE: the only use case for .[instruments] is opentelemetry-instrumentation-eopf. Maybe we should configure this.
+            uv pip install .[instruments] || true
           fi
 
+          $prefix pip install pytest-error-for-skips # for pytest --error-for-skips
+          $prefix -q opentelemetry-bootstrap -a install || true # install otel instrumentation packages for dependencies
           $prefix pip list
 
-          # Set --cov args
-          for cov_dir in ${{ inputs.test-covered-dirs }}; do
+          # Set --cov args, replace ',' by ' '
+          cov_dirs=${{ inputs.cov-dirs }}
+          for cov_dir in ${cov_dirs//,/ }; do
             cov_args="$cov_args --cov=$(realpath ${root_dir}/${cov_dir})"
           done
 
@@ -394,10 +421,10 @@ jobs:
             junit-xml-report.xml
           retention-days: 1
 
-  generate-quality-report:
+  run-sonarqube:
     runs-on: ubuntu-latest
-    name: Quality report (sonarqube)
-    needs: [repo-name, run-python-tools, merge-pytests-cov]
+    name: Run SonarQube
+    needs: [repo-name, find-paths, run-python-tools, merge-pytests-cov]
     if: always()
     permissions:
       pull-requests: write # for: phwt/sonarqube-quality-gate-action
@@ -408,78 +435,75 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
           fetch-depth: 0 # Full history for SCM and branch analysis
 
       - name: Download python and pytest reports
         uses: actions/download-artifact@v8
         with:
           pattern: ${{ needs.repo-name.outputs.value }}-*.report
+          merge-multiple: true
 
-      - name: Get directory names
-        id: dir_names
+      - name: Init SonarQube environment
+        id: init
         run: |
           set -x
-          find .
+          ls -al
 
-      # - name: Get directory names
-      #   id: dir_names
-      #   run: |
-      #     echo tests=$(find . -type d -name "tests" | paste -sd ",") >> $GITHUB_OUTPUT
-      #   shell: bash
+          # Join tests/ dir names with a ','
+          echo tests=${{ join(fromJson(needs.find-paths.outputs.tests), ',') }} >> $GITHUB_OUTPUT
 
-      # - name: Normalize coverage paths for SonarCloud
-      #   run: |
-      #     sed -i 's|<source>[^<]*</source>|<source>.</source>|g' ./cov-report.xml
+          # Normalize coverage paths for sonar: replace <source>xxx</source> by <source>.</source>
+          sed -i 's|<source>[^<]*</source>|<source>.</source>|g' ./cov-report.xml || true # only if the file exists
 
-      # - name: Run SonarCloud Scanner
-      #   uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9 # v7
-      #   with:
-      #     # See doc: https://docs.sonarsource.com/sonarqube-cloud
-      #     #
-      #     # "sonar.coverage.exclusions" excludes some files from the test coverage metrics but those files are still
-      #     # analyzed: other metrics, duplications, coding rules...
-      #     #
-      #     # "sonar.exclusions" completely excludes some files from the analysis: those files don't appear at all
-      #     # in SonarQube.
-      #     #
-      #     projectBaseDir: .
-      #     args: >
-      #       -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
-      #       -Dsonar.organization=rs-python
-      #       -Dsonar.branch.name=${{ github.ref_name }}
-      #       -Dsonar.sources=.
-      #       -Dsonar.tests=${{ steps.dir_names.outputs.tests }}
-      #       -Dsonar.coverage.exclusions=tests,tests/**,**/tests/**,resources/sync_config_files.py
-      #       -Dsonar.exclusions=tests,tests/**,**/tests/**,services/common/rs_server_common/footprint_facility.py
-      #       -Dsonar.sourceEncoding=UTF-8
-      #       -Dsonar.python.version=${{ inputs.python-version }}
-      #       -Dsonar.python.pylint.reportPaths=./pylint-report.txt
-      #       -Dsonar.python.flake8.reportPaths=./flake8-report.txt
-      #       -Dsonar.python.bandit.reportPaths=./bandit-report.json
-      #       -Dsonar.python.coverage.reportPaths=./cov-report.xml
-      #       -Dsonar.python.xunit.reportPath=./junit-xml-report.xml
+          # Set the sonar command line options, depending on the downloaded report files
+          options=""
+          [[ -f ./bandit-report.json ]] && options="$options -Dsonar.python.bandit.reportPaths=./bandit-report.json"
+          [[ -f ./cov-report.xml ]] && options="$options -Dsonar.python.coverage.reportPaths=./cov-report.xml"
+          [[ -f ./flake8-report.txt ]] && options="$options -Dsonar.python.flake8.reportPaths=./flake8-report.txt"
+          [[ -f ./junit-xml-report.xml ]] && options="$options -Dsonar.python.xunit.reportPaths=./junit-xml-report.xml"
+          [[ -f ./pylint-report.txt ]] && options="$options -Dsonar.python.pylint.reportPaths=./pylint-report.txt"
+          echo options="$options" >> $GITHUB_OUTPUT
 
-      # - name: Wait for quality gate result
-      #   run: sleep 5
+      - name: Run SonarCloud Scanner
+        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
+        with:
+          # See doc: https://docs.sonarsource.com/sonarqube-cloud
+          projectBaseDir: .
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=rs-python
+            -Dsonar.branch.name=${{ inputs.caller-ref_name }}
+            -Dsonar.sources=.
+            -Dsonar.tests=${{ steps.init.outputs.tests }}
+            -Dsonar.coverage.exclusions=${{ inputs.sonar-cov-exclusions }}
+            -Dsonar.exclusions=${{ inputs.sonar-exclusions }}
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.python.version=${{ inputs.python-version }}
+            ${{ steps.init.outputs.options }}
 
-      # - name: Report quality gate result in the pull request comment
-      #   uses: phwt/sonarqube-quality-gate-action@e8842ff65b97bfa4fd4effe3ab0909f568d16e91 # v1
-      #   id: quality-gate-result
-      #   with:
-      #     sonar-project-key: ${{ env.SONAR_PROJECT_KEY }}
-      #     sonar-host-url: ${{ env.SONAR_HOST_URL }}
-      #     sonar-token: ${{ env.SONAR_TOKEN }}
-      #     github-token: ${{ secrets.GITHUB_TOKEN }}
-      #     branch: ${{ github.ref_name }}
+      - name: Wait for quality gate result
+        run: sleep 5
 
-      # - name: Output result
-      #   run: |
-      #     echo "Project status: ${{ steps.quality-gate-result.outputs.project-status }}"
-      #     echo "Quality gate result: ${{ steps.quality-gate-result.outputs.quality-gate-result }}"
+      - id: quality-gate-result
+        name: Report quality gate result in the pull request comment
+        uses: phwt/sonarqube-quality-gate-action@e8842ff65b97bfa4fd4effe3ab0909f568d16e91
+        with:
+          sonar-project-key: ${{ env.SONAR_PROJECT_KEY }}
+          sonar-host-url: ${{ env.SONAR_HOST_URL }}
+          sonar-token: ${{ env.SONAR_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ inputs.caller-ref_name }}
 
-      # - id: check-gate
-      #   name: Check quality gate status
-      #   uses: sonarsource/sonarqube-quality-gate-action@cb3ed20f9fec62b4c3b8ad9e77656c6adaade913 # master
-      #   timeout-minutes: 5
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: Output result
+        run: |
+          echo "Project status: ${{ steps.quality-gate-result.outputs.project-status }}"
+          echo "Quality gate result: ${{ steps.quality-gate-result.outputs.quality-gate-result }}"
+
+      - id: check-gate
+        name: Check quality gate status
+        uses: sonarsource/sonarqube-quality-gate-action@cb3ed20f9fec62b4c3b8ad9e77656c6adaade913
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

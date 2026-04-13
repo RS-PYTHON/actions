@@ -14,28 +14,35 @@
 
 name: Check code quality
 
-on:
-  push:
+# on:
+#   push:
+#     branches:
+#       - develop # pushes on the 'develop' branch
+#     tags:
+#       - '**' # new git tags (including hierarchical tags like v1.0/beta)
 #   pull_request:
-  workflow_dispatch:
+#     types: [opened, synchronize, reopened]
+#   workflow_dispatch:
+
+on:
+  push # TEMP !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 jobs:
-  # call-reusable-workflow:
-  #   name: _
-  #   uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
-  #   with:
-  #       # caller-repository: ${{ github.repository }}
-  #       # caller-ref: ${{ github.ref }}
 
-  #       caller-repository: RS-PYTHON/rs-server
-  #       caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
-
-  #   secrets:
-  #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
-  #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  #   permissions:
-  #     contents: write # for apache/skywalking-eyes/header
-  #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
+  # Check quality of this current project by calling the reusable quality check from this same project.
+  call-reusable-workflow:
+    name: _
+    uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+    with:
+        caller-repository: ${{ github.repository }}
+        caller-ref: ${{ github.ref }}
+        caller-ref_name: ${{ github.ref_name }}
+    secrets:
+      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    permissions:
+      contents: write # for apache/skywalking-eyes/header
+      pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
 
   # rs-testmeans:
   #   name: rs-testmeans
@@ -43,6 +50,7 @@ jobs:
   #   with:
   #       caller-repository: RS-PYTHON/rs-testmeans
   #       caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
+  #       caller-ref_name: feat-rspy995/run-sonar-from-project-root
   #       ignore-bandit-errors: true
   #       ignore-flake8-errors: true
   #       ignore-mypy-errors: true
@@ -60,7 +68,9 @@ jobs:
   #   with:
   #       caller-repository: RS-PYTHON/rs-client-libraries
   #       caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
-  #       test-covered-dirs: "rs_client rs_common rs_workflows"
+  #       caller-ref_name: feat-rspy995/run-sonar-from-project-root
+  #       cov-dirs: "rs_client,rs_common,rs_workflows"
+          # sonar-cov-exclusions: tests,tests/**,**/tests/**,rs_workflows/on_demand/**,rs_workflows/operation/**,rs_workflows/utils/**
   #   secrets:
   #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
   #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -68,28 +78,31 @@ jobs:
   #     contents: write # for apache/skywalking-eyes/header
   #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
 
-  opentelemetry-instrumentation-eopf:
-    name: opentelemetry-instrumentation-eopf
-    uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
-    with:
-        caller-repository: RS-PYTHON/opentelemetry-instrumentation-eopf
-        caller-ref: main
-    secrets:
-      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-    permissions:
-      contents: write # for apache/skywalking-eyes/header
-      pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
+  # opentelemetry-instrumentation-eopf:
+  #   name: opentelemetry-instrumentation-eopf
+  #   uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+  #   with:
+  #       caller-repository: RS-PYTHON/opentelemetry-instrumentation-eopf
+  #       caller-ref: refs/heads/feat-rspy995/run-sonar-from-project-root
+  #       caller-ref_name: feat-rspy995/run-sonar-from-project-root
+  #       python-version: 3.12
+  #   secrets:
+  #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+  #     # SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  #   permissions:
+  #     contents: write # for apache/skywalking-eyes/header
+  #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
 
-  cadip-stac-extension:
-    name: cadip-stac-extension
-    uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
-    with:
-        caller-repository: RS-PYTHON/cadip-stac-extension
-        caller-ref: main
-    secrets:
-      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-    permissions:
-      contents: write # for apache/skywalking-eyes/header
-      pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
+  # cadip-stac-extension:
+  #   name: cadip-stac-extension
+  #   uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+  #   with:
+  #       caller-repository: RS-PYTHON/cadip-stac-extension
+  #       caller-ref: main
+  #       caller-ref_name: main
+  #   secrets:
+  #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+  #     # SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  #   permissions:
+  #     contents: write # for apache/skywalking-eyes/header
+  #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
