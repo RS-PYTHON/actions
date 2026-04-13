@@ -79,26 +79,50 @@ on:
 
 jobs:
 
+  # Convert inputs into environment variables to tackle :
+  # https://sonarcloud.io/organizations/rs-python/rules?open=githubactions%3AS7630&rule_key=githubactions%3AS7630
+  env:
+    runs-on: ubuntu-latest
+    name: Setup environment
+    outputs:
+      caller-repository: ${{ steps.values.outputs.caller-repository }}
+      cov-dirs: ${{ steps.values.outputs.cov-dirs }}
+      poetry-version: ${{ steps.values.outputs.poetry-version }}
+      python-version: ${{ steps.values.outputs.python-version }}
+    steps:
+      - id: values
+        env:
+          caller-repository: ${{ inputs.caller-repository }}
+          cov-dirs: ${{ inputs.cov-dirs }}
+          poetry-version: ${{ inputs.poetry-version }}
+          python-version: ${{ inputs.python-version }}
+        run: |
+          echo caller-repository=${{ env.caller-repository }} >> $GITHUB_OUTPUT
+          echo cov-dirs=${{ env.cov-dirs }} >> $GITHUB_OUTPUT
+          echo poetry-version=${{ env.poetry-version }} >> $GITHUB_OUTPUT
+          echo python-version=${{ env.python-version }} >> $GITHUB_OUTPUT
+
   repo-name:
     runs-on: ubuntu-latest
     name: Get Git repository name
+    needs: env
     outputs:
       # Only keep the git repository name from caller-repository which is <github-organization>/<git-repo>
-      value: ${{ steps.value.outputs.value }}
+      value: ${{ steps.values.outputs.value }}
 
       # <github-organization>_<git-repo>, used by SonarQube
-      sonar: ${{ steps.value.outputs.sonar }}
+      sonar: ${{ steps.values.outputs.sonar }}
     steps:
-      - id: value
+      - id: values
         run: |
           set -x
-          org_repo=${{ inputs.caller-repository }}
+          org_repo=${{ needs.env.outputs.caller-repository }}
 
           # See: https://stackoverflow.com/a/19482947
           echo value=${org_repo##*/} >> $GITHUB_OUTPUT # keep value after the last /
 
           # Replace / by _
-          echo sonar=${org_repo//\//_} >> $GITHUB_OUTPUT # keep value after the last /
+          echo sonar=${org_repo//\//_} >> $GITHUB_OUTPUT
 
   find-paths:
     runs-on: ubuntu-latest
@@ -175,7 +199,7 @@ jobs:
           exit-code: 1
 
       - name: Scan config files for misconfigurations
-        if: always()
+        if: always() && !cancelled()
         continue-on-error: true
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         env:
@@ -201,7 +225,7 @@ jobs:
         tool: [bandit, flake8, mypy, pylint, safety]
 
         include:
-          - if: always()
+          - if: always() && !cancelled()
           - tool: bandit
             continue-on-error: ${{ inputs.ignore-bandit-errors }}
             report-path: ./bandit-report.json
@@ -260,7 +284,7 @@ jobs:
           ${{ matrix.commands }}
 
       - name: Save reports as artifacts
-        if: always() # even if the previous step ended in failure
+        if: always() && !cancelled()
         continue-on-error: true # let the step fail if matrix.report-path is undefined
         uses: actions/upload-artifact@v7
         with:
@@ -271,7 +295,7 @@ jobs:
   run-all-pytests:
     runs-on: ubuntu-latest
     name: Run Pytest
-    needs: [repo-name, find-paths]
+    needs: [env, repo-name, find-paths]
     if: ${{ needs.find-paths.outputs.tests != '[]' }} # only if we have tests/ dirs
     strategy:
       fail-fast: true # one tests/ dir that fails will cancel the others
@@ -320,10 +344,10 @@ jobs:
             prefix="poetry run"
 
             # Install poetry
-            pip install "poetry==${{ inputs.poetry-version }}"
+            pip install "poetry==${{ needs.env.outputs.poetry-version }}"
 
             # Regenerate the poetry.lock file for non-standard python versions
-            [[ "${{ matrix.python-version }}" != "${{ inputs.python-version }}" ]] && poetry lock --regenerate
+            [[ "${{ matrix.python-version }}" != "${{ needs.env.outputs.python-version }}" ]] && poetry lock --regenerate
 
             # Install the poetry project from the current tests/dir
             poetry install
@@ -333,7 +357,7 @@ jobs:
           else
             prefix="uv run"
             rm -rf ./.venv
-            pip install uv && uv venv --python ${{ inputs.python-version }} && uv pip install pip
+            pip install uv && uv venv --python ${{ needs.env.outputs.python-version }} && uv pip install pip
             uv pip install .
             uv pip install .[dev] || true
             # NOTE: the only use case for .[instruments] is opentelemetry-instrumentation-eopf. Maybe we should configure this.
@@ -345,7 +369,7 @@ jobs:
           $prefix pip list
 
           # Set --cov args, replace ',' by ' '
-          cov_dirs=${{ inputs.cov-dirs }}
+          cov_dirs=${{ needs.env.outputs.cov-dirs }}
           for cov_dir in ${cov_dirs//,/ }; do
             cov_args="$cov_args --cov=$(realpath ${root_dir}/${cov_dir})"
           done
@@ -372,7 +396,7 @@ jobs:
           mv ${root_dir}/.coverage ${root_dir}/.coverage.${dash_dir}
 
       - name: Save coverage reports as artifacts
-        if: always() # even if the previous step ended in failure
+        if: always() && !cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.repo-name.outputs.value }}-pytest.${{ matrix.python-version}}.${{ steps.run.outputs.dash_dir }}
@@ -425,7 +449,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Run SonarQube
     needs: [repo-name, find-paths, run-python-tools, merge-pytests-cov]
-    if: always()
+    if: always() && !cancelled()
     permissions:
       pull-requests: write # for: phwt/sonarqube-quality-gate-action
     env:
