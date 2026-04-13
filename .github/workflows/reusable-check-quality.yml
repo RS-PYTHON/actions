@@ -498,7 +498,7 @@ jobs:
         with:
           sonar-project-key: ${{ env.SONAR_PROJECT_KEY }}
           sonar-host-url: ${{ env.SONAR_HOST_URL }}
-          sonar-token: ${{ env.SONAR_TOKEN }}
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ inputs.caller-ref_name }}
 

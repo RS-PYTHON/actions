@@ -29,14 +29,78 @@ on:
 
 jobs:
   # Check quality of this current project by calling the reusable quality check from this same project.
-  call-reusable-workflow:
-    name: _
-    # uses: RS-PYTHON/actions/.github/workflows/reusable-check-quality.yml@feat-rspy995/run-sonar-from-project-root
+
+  # call-reusable-workflow:
+  #   name: _
+  #   uses: ./.github/workflows/reusable-check-quality.yml
+  #   with:
+  #       caller-repository: ${{ github.repository }}
+  #       caller-ref: ${{ github.ref }}
+  #       caller-ref_name: ${{ github.ref_name }}
+  #   secrets:
+  #     SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+  #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  #   permissions:
+  #     contents: write # for apache/skywalking-eyes/header
+  #     pull-requests: write # for apache/skywalking-eyes/header and phwt/sonarqube-quality-gate-action
+
+  # For each repository, get the most relevant branch name: current branch name, or develop, or main, or master.
+  all-repos:
+    name: Get repo info
+    runs-on: ubuntu-latest
+    outputs:
+      names: ${{ steps.setup.outputs.repo_names }}
+      info: ${{ steps.setup.outputs.repo_info }}
+    steps:
+      - id: setup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -x
+
+          # Build json arrays by hand
+          repo_names="["
+          repo_info="{"
+
+          # For each repository name from this organization
+          for repo_name in $(gh repo list ${{ github.repository_owner }} --json name | jq -r '.[].name'); do
+
+            # Test if the current branch name exists for this repo.
+            # Then test develop, main and master.
+            for test_branch_name in ${{ github.ref_name }} develop main and master; do
+              if gh api repos/${{ github.repository_owner }}/${repo_name}/branches/${test_branch_name} --silent; then
+                ref_name=$test_branch_name
+                if [[ $test_branch_name == ${{ github.ref_name }} ]]; then
+                  ref=${{ github.ref }}
+                else
+                  ref=$test_branch_name
+                fi
+                break
+              fi
+            done
+
+            # Update the json array with repo_name
+            repo_names="${repo_names}\"${repo_name}\","
+
+            # Update the json dict whith <repo_name>:{ref:<ref>,ref_name:<ref_name>},
+            repo_info="${repo_info}\"${repo_name}\":{\"ref\":\"${ref}\",\"ref_name\":\"${ref_name}\"},"
+          done
+          echo "repo_names=${repo_names}]" >> $GITHUB_OUTPUT
+          echo "repo_info=${repo_info}}" >> $GITHUB_OUTPUT
+
+  # Check quality of all repositories
+  call-all-repos:
+    name: Call all repos
+    needs: all-repos
+    strategy:
+      fail-fast: false
+      matrix:
+        repo_name: ${{ fromJson(needs.all-repos.outputs.names) }}
     uses: ./.github/workflows/reusable-check-quality.yml
     with:
-        caller-repository: ${{ github.repository }}
-        caller-ref: ${{ github.ref }}
-        caller-ref_name: ${{ github.ref_name }}
+        caller-repository: ${{ github.repository_owner }}/${{ matrix.repo_name }}
+        caller-ref: ${{ fromJson(needs.all-repos.outputs.info)[matrix.repo_name]['ref'] }}
+        caller-ref_name: ${{ fromJson(needs.all-repos.outputs.info)[matrix.repo_name]['ref'] }}
     secrets:
       SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
