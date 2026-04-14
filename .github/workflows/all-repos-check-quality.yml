@@ -14,11 +14,27 @@
 
 name: Check code quality on all repositories
 
-# on:
-#   workflow_dispatch:
-
 on:
-  push # TEMP !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  push: # NOTE: comment this if you don't want this workflow to run for every new push
+  workflow_dispatch:
+
+env:
+  # Don't call these repos
+  IGNORE_REPOS: >
+    .github
+    auxip-stac-extension
+    local-pypi
+    operational-services
+    pygeofilter
+    rs-annexes
+    rs-issues
+    RS-PYTHON.github.io
+    rs-statuspage
+    upptime
+
+  # For testing: only call these repos (except the ignored ones) (should be empty to test all repos)
+  ONLY_REPOS: ""
+  # ONLY_REPOS: "rs-demo"
 
 jobs:
   # For each repository, get the most relevant branch name: current branch name, or develop, or main, or master.
@@ -40,24 +56,23 @@ jobs:
           repo_info="{"
 
           # For each repository name from this organization
-          for repo_name in $(gh repo list ${{ github.repository_owner }} --json name | jq -r '.[].name'); do
+          for repo_name in $(gh repo list ${{ github.repository_owner }} --json name | jq -r '.[].name' | sort); do
 
             # Ignore these repos
-            ignore=" upptime pygeofilter .github rs-annexes RS-PYTHON.github.io local-pypi rs-statuspage rs-issues "
-            [[ $ignore =~ " $repo_name " ]] && continue
+            [[ " ${{ env.IGNORE_REPOS }} " =~ " $repo_name " ]] && continue
 
-            # TEMP, to test only specific repos
-            # [[ ! " opentelemetry-instrumentation-eopf rs-testmeans " =~ " $repo_name " ]] && continue
+            # Call only these repos (if the variable is not empty)
+            [[ -n "${{ env.ONLY_REPOS }}" ]] && [[ ! " ${{ env.ONLY_REPOS }} " =~ " $repo_name " ]] && continue
 
             # Test if the current branch name exists for this repo.
             # Then test develop, main and master.
             for test_branch_name in ${{ github.ref_name }} develop main and master; do
               if gh api repos/${{ github.repository_owner }}/${repo_name}/branches/${test_branch_name} --silent; then
-                ref_name=$test_branch_name
-                if [[ $test_branch_name == ${{ github.ref_name }} ]]; then
-                  ref=${{ github.ref }}
-                else
-                  ref=$test_branch_name
+                repo_ref_name=$test_branch_name
+                if [[ $test_branch_name == ${{ github.ref_name }} ]]; then # if the current branch name exists for the tested repo
+                  repo_ref=${{ github.ref }}
+                else # for develop, main and master
+                  repo_ref=$test_branch_name
                 fi
                 break
               fi
@@ -66,8 +81,8 @@ jobs:
             # Update the json array with repo_name
             repo_names="${repo_names}\"${repo_name}\","
 
-            # Update the json dict whith <repo_name>:{ref:<ref>,ref_name:<ref_name>},
-            repo_info="${repo_info}\"${repo_name}\":{\"ref\":\"${ref}\",\"ref_name\":\"${ref_name}\"},"
+            # Update the json dict whith <repo_name>:{ref:<repo_ref>,ref-name:<repo_ref_name>},
+            repo_info="${repo_info}\"${repo_name}\":{\"ref\":\"${repo_ref}\",\"ref-name\":\"${repo_ref_name}\"},"
           done
           echo "repo_names=${repo_names}]" >> $GITHUB_OUTPUT
           echo "repo_info=${repo_info}}" >> $GITHUB_OUTPUT
@@ -80,7 +95,7 @@ jobs:
     with:
         caller-repository: ${{ github.repository_owner }}/${{ matrix.repo }}
         caller-ref: ${{ fromJson(needs.all-repos.outputs.info)[matrix.repo]['ref'] }}
-        caller-ref_name: ${{ fromJson(needs.all-repos.outputs.info)[matrix.repo]['ref'] }}
+        caller-ref_name: ${{ fromJson(needs.all-repos.outputs.info)[matrix.repo]['ref-name'] }}
         python-version: ${{ matrix.python-version }}
         poetry-version: ${{ matrix.poetry-version }}
         run-trivy: ${{ matrix.run-trivy }}
@@ -104,7 +119,7 @@ jobs:
         repo: ${{ fromJson(needs.all-repos.outputs.names) }}
         include:
 
-          # Default option values
+          # Default option values, copied from reusable-check-quality.yml
           - python-version: 3.13.12
           - poetry-version: 2.3.2
           - run-trivy: true
@@ -124,6 +139,12 @@ jobs:
           - repo: rs-client-libraries
             cov-dirs: "rs_client,rs_common,rs_workflows"
             sonar-cov-exclusions: tests,tests/**,**/tests/**,rs_workflows/on_demand/**,rs_workflows/operation/**,rs_workflows/utils/**
+
+          - repo: rs-demo
+            ignore-bandit-errors: true
+            ignore-flake8-errors: true
+            ignore-mypy-errors: true
+            ignore-pylint-errors: true
 
           - repo: rs-testmeans
             ignore-bandit-errors: true

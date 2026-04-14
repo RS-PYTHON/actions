@@ -22,11 +22,11 @@ on:
         type: string
         required: true
       caller-ref:
-        description: $ {{ github.ref }} coming from the calling workflow
+        description: $ {{ github.ref }} coming from the calling workflow, e.g. refs/heads/my-branch-name  or refs/pull/<pr_number>/merge
         type: string
         required: true
       caller-ref_name:
-        description: $ {{ github.ref_name }} coming from the calling workflow
+        description: $ {{ github.ref_name }} coming from the calling workflow, e.g. my-branch-name  or <pr_number>/merge
         type: string
         required: true
       python-version:
@@ -130,6 +130,23 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python-version }}
+
+      # Install brew dependencies if needed
+      - id: check-brew
+        run: |
+          set -x
+          if grep terraform ./.pre-commit-config.yaml; then
+            echo tap=hashicorp/tap >> $GITHUB_OUTPUT
+            echo install="hashicorp/tap/terraform tflint" >> $GITHUB_OUTPUT
+          fi
+      - if: ${{ steps.check-brew.outputs.install }}
+        uses: Homebrew/actions/setup-homebrew@675fcd27b59e54d310c5484c8c27c01d03da660c
+      - if: ${{ steps.check-brew.outputs.install }}
+        run: |
+          set -x
+          brew tap ${{ steps.check-brew.outputs.tap }}
+          brew install ${{ steps.check-brew.outputs.install }}
+
       - run: >
           echo
           ":information_source: This job checks that you have run \`pre-commit run --all-files\` in
@@ -262,8 +279,7 @@ jobs:
           ${{ matrix.commands }}
 
       - name: Save reports as artifacts
-        if: always() && !cancelled()
-        continue-on-error: true # let the step fail if matrix.report-path is undefined
+        if: ${{ !cancelled() && matrix.report-path }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.repo-name.outputs.value }}-${{ matrix.tool }}.report

@@ -21,7 +21,7 @@ on:
     tags:
       - '**' # new git tags (including hierarchical tags like v1.0/beta)
   pull_request:
-    types: [opened, synchronize, reopened] # !!!!!!!!!!!!!!!!!! TEMP !!!!!!!!!!!!!!!!!!!!!!
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 jobs:
