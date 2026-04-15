@@ -1,0 +1,526 @@
+# Copyright 2023-2026 Airbus, CS Group
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Check code quality (reusable workflow)
+
+on:
+  workflow_call: # reusable workflow
+    inputs:
+      caller-repository:
+        description: $ {{ github.repository }} coming from the calling workflow
+        type: string
+        required: true
+      caller-ref:
+        description: $ {{ github.ref }} coming from the calling workflow, e.g. refs/heads/my-branch-name  or refs/pull/<pr_number>/merge
+        type: string
+        required: true
+      caller-ref_name:
+        description: $ {{ github.ref_name }} coming from the calling workflow, e.g. my-branch-name  or <pr_number>/merge
+        type: string
+        required: true
+      python-version:
+        description: Main python version (only for Python projects)
+        type: string
+        default: 3.13.12
+      poetry-version:
+        description: Poetry version (when applicable)
+        type: string
+        default: 2.3.2
+      ignore-bandit-errors:
+        type: boolean
+        default: false
+      ignore-flake8-errors:
+        type: boolean
+        default: false
+      ignore-mypy-errors:
+        type: boolean
+        default: false
+      ignore-pylint-errors:
+        type: boolean
+        default: false
+      ignore-safety-errors:
+        type: boolean
+        default: false
+      cov-dirs:
+        description: Directories covered by pytests, as a comma-separated list e.g. 'dir1,dir2'
+        type: string
+        default: .
+      sonar-cov-exclusions:
+        description: "'sonar.coverage.exclusions' excludes some files from the test coverage metrics but those files are
+                     still analyzed other metrics, duplications, coding rules... "
+        type: string
+        default: tests,tests/**,**/tests/**
+      sonar-exclusions:
+        description: "'sonar.exclusions' completely excludes some files from the analysis: those files don't appear
+                     at all in SonarQube."
+        type: string
+        default: tests,tests/**,**/tests/**
+
+    secrets:
+      SAFETY_API_KEY:
+        required: true
+      SONAR_TOKEN:
+        required: true
+
+jobs:
+
+  repo-name:
+    runs-on: ubuntu-latest
+    name: Get Git repository name
+    outputs:
+      # Only keep the git repository name from caller-repository which is <github-organization>/<git-repo>
+      value: ${{ steps.setup.outputs.value }}
+
+      # <github-organization>_<git-repo>, used by SonarQube
+      sonar: ${{ steps.setup.outputs.sonar }}
+    env:
+        caller-repository: ${{ inputs.caller-repository }}
+    steps:
+      - id: setup
+        run: |
+          set -x
+          org_repo=${{ env.caller-repository }}
+
+          # See: https://stackoverflow.com/a/19482947
+          echo value=${org_repo##*/} >> $GITHUB_OUTPUT # keep value after the last /
+
+          # Replace / by _
+          echo sonar=${org_repo//\//_} >> $GITHUB_OUTPUT
+
+  find-paths:
+    runs-on: ubuntu-latest
+    name: Find paths in git repository
+    outputs:
+      py: ${{ steps.find.outputs.py }}
+      tests: ${{ steps.find.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+      - id: find
+        run: |
+          set -x
+          echo py=$(python -c "import glob, json; json.dumps(print(glob.glob ('**/*.py', recursive=True)))")  >> $GITHUB_OUTPUT
+          echo tests=$(python -c "import glob, json; json.dumps(print(glob.glob ('**/tests/', recursive=True)))")  >> $GITHUB_OUTPUT
+
+  check-pre-commit:
+    runs-on: ubuntu-latest
+    name: Check pre-commit
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      # Install brew dependencies if needed
+      - id: check-brew
+        run: |
+          set -x
+          if grep terraform ./.pre-commit-config.yaml; then
+            echo tap=hashicorp/tap >> $GITHUB_OUTPUT
+            echo install="hashicorp/tap/terraform tflint" >> $GITHUB_OUTPUT
+          fi
+      - if: ${{ steps.check-brew.outputs.install }}
+        uses: Homebrew/actions/setup-homebrew@675fcd27b59e54d310c5484c8c27c01d03da660c
+      - if: ${{ steps.check-brew.outputs.install }}
+        run: |
+          set -x
+          brew tap ${{ steps.check-brew.outputs.tap }}
+          brew install ${{ steps.check-brew.outputs.install }}
+
+      - run: >
+          echo
+          ":information_source: This job checks that you have run \`pre-commit run --all-files\` in
+          your local git repository before committing."
+          >> $GITHUB_STEP_SUMMARY
+      - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd
+
+  check-license:
+    runs-on: ubuntu-latest
+    name: Check license headers
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+      - name: Check License Header
+        uses: apache/skywalking-eyes/header@8c96ee223558797cdd9eba82c0919258e1cf2dad
+        with:
+          log: debug
+          mode: check
+
+  run-trivy:
+    runs-on: ubuntu-latest
+    name: Run Trivy
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+
+      - name: Scan local filesystem
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
+        with:
+          version: v0.69.3
+          scan-type: fs
+          ignore-unfixed: true
+          format: table
+          exit-code: 1
+
+      - name: Scan config files for misconfigurations
+        if: always() && !cancelled()
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
+        with:
+          version: v0.69.3
+          scan-type: config
+          ignore-unfixed: true
+          format: table
+          exit-code: 1
+
+  run-python-tools:
+    runs-on: ubuntu-latest
+    name: Run Python tools
+    needs: [repo-name, find-paths]
+    if: ${{ needs.find-paths.outputs.py != '[]' }} # only for python projects
+    env:
+      SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [bandit, flake8, mypy, pylint, safety]
+
+        include:
+          - if: always() && !cancelled()
+          - tool: bandit
+            continue-on-error: ${{ inputs.ignore-bandit-errors }}
+            report-path: ./bandit-report.json
+            commands: |
+              if [[ -f pyproject.toml ]]; then
+                options="-c pyproject.toml"
+              fi
+              bandit $options -r . || true # run next line even if fails
+              bandit $options -r . -f json -o ./bandit-report.json
+
+          - tool: flake8
+            continue-on-error: ${{ inputs.ignore-flake8-errors }}
+            extra-packages: Flake8-pyproject
+            report-path: ./flake8-report.txt
+            commands: |
+              flake8 . || true # run next line even if fails
+              flake8 . --output-file ./flake8-report.txt
+
+          - tool: mypy
+            continue-on-error: ${{ inputs.ignore-mypy-errors }}
+            commands: |
+              mypy --install-types --non-interactive --explicit-package-bases .
+
+          - tool: pylint
+            continue-on-error: ${{ inputs.ignore-pylint-errors }}
+            report-path: ./pylint-report.txt
+            commands: |
+              pylint "**/*.py" --output-format=colorized,parseable:./pylint-report.txt
+
+          - tool: safety
+            if: ${{ github.actor != 'dependabot[bot]' }} # dependabot does not have access to secrets
+            continue-on-error: ${{ inputs.ignore-safety-errors }}
+            extra-packages: typer==0.16.0
+            commands: |
+              safety --key $SAFETY_API_KEY scan --detailed-output
+
+    steps:
+      - if: ${{ matrix.if }}
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+
+      - if: ${{ matrix.if }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - if: ${{ matrix.if }}
+        name: Install and run ${{ matrix.tool }}
+        continue-on-error: ${{ matrix.continue-on-error }}
+        run: |
+          set -x
+          pip install ${{ matrix.tool }} ${{ matrix.extra-packages }}
+          pip list
+          ${{ matrix.commands }}
+
+      - name: Save reports as artifacts
+        if: ${{ !cancelled() && matrix.report-path }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.repo-name.outputs.value }}-${{ matrix.tool }}.report
+          path: ${{ matrix.report-path }}
+          retention-days: 1
+
+  run-all-pytests:
+    runs-on: ubuntu-latest
+    name: Run Pytest
+    needs: [repo-name, find-paths]
+    if: ${{ needs.find-paths.outputs.tests != '[]' }} # only if we have tests/ dirs
+    strategy:
+      fail-fast: true # one tests/ dir that fails will cancel the others
+      matrix:
+        tests-dir: ${{ fromJson(needs.find-paths.outputs.tests) }}
+        # only main python version
+        python-version: ["${{ inputs.python-version }}" ]
+        include:
+          - experimental: false
+        # test several python versions
+        # python-version: ["${{ inputs.python-version }}", 3.13t, 3.14, 3.15.0a2 ]
+        # include:
+        #   - experimental: false
+        #   - python-version: 3.13t # free-threaded mode, with the global interpreter lock (GIL) disabled
+        #     experimental: true
+        #   - python-version: 3.14
+        #     experimental: true
+        #   - python-version: 3.15.0a2
+        #     experimental: true
+    continue-on-error: ${{ matrix.experimental }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - id: run
+        name: Install and test ${{ matrix.tests-dir }}
+        env:
+          cov-dirs: ${{ inputs.cov-dirs }}
+          poetry-version: ${{ inputs.poetry-version }}
+          python-version: ${{ inputs.python-version }}
+        run: |
+          set -x
+          root_dir=$(pwd)
+          proj_dir=$(dirname ${{ matrix.tests-dir }}) # parent dir of the tests/ dir
+          cd $proj_dir
+
+          dash_dir=${proj_dir//\//-} # replace / by - in the current project dir name
+          [[ $dash_dir == . ]] && dash_dir=root # rename the . dir into root
+          echo dash_dir=$dash_dir >> $GITHUB_OUTPUT
+
+          # Check if the current tests/ dir has a pyproject.toml file that contains the "poetry" string
+          if grep -q "poetry" ./pyproject.toml; then
+            prefix="poetry run"
+
+            # Install poetry
+            pip install "poetry==${{ env.poetry-version }}"
+
+            # Regenerate the poetry.lock file for non-standard python versions
+            [[ "${{ matrix.python-version }}" != "${{ env.python-version }}" ]] && poetry lock --regenerate
+
+            # Install the poetry project from the current tests/dir
+            poetry install
+            poetry install --with dev || true
+
+          # Else install with uv (faster than pip)
+          else
+            prefix="uv run"
+            rm -rf ./.venv
+            pip install uv && uv venv --python ${{ env.python-version }} && uv pip install pip
+            uv pip install .
+            uv pip install .[dev] || true
+            # NOTE: the only use case for .[instruments] is opentelemetry-instrumentation-eopf. Maybe we should configure this.
+            uv pip install .[instruments] || true
+          fi
+
+          $prefix pip install pytest-error-for-skips # for pytest --error-for-skips
+          $prefix -q opentelemetry-bootstrap -a install || true # install otel instrumentation packages for dependencies
+          $prefix pip list
+
+          # Set --cov args, replace ',' by ' '
+          cov_dirs=${{ env.cov-dirs }}
+          for cov_dir in ${cov_dirs//,/ }; do
+            cov_args="$cov_args --cov=$(realpath ${root_dir}/${cov_dir})"
+          done
+
+          # Run pytest from the root directory.
+          # -ra: Show extra test summary info
+          # --durations=N Show N slowest setup/test durations (N=0 for all)
+          # --durations-min=N Minimal duration in seconds for inclusion in slowest list
+          # --error-for-skips Treat skipped tests as errors
+          cd "$root_dir"
+          $(cd $proj_dir && $prefix which python) -m pytest ${{ matrix.tests-dir }} \
+            -ra \
+            --disable-pytest-warnings \
+            --color=yes \
+            --durations=0 \
+            --durations-min=0.05 \
+            --error-for-skips \
+            $cov_args \
+            --cov-append \
+            --cov-report=term \
+            --junit-xml=${root_dir}/junit-xml-report.${dash_dir}.xml
+
+          # Rename .coverage file
+          mv ${root_dir}/.coverage ${root_dir}/.coverage.${dash_dir}
+
+      - name: Save coverage reports as artifacts
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.repo-name.outputs.value }}-pytest.${{ matrix.python-version}}.${{ steps.run.outputs.dash_dir }}
+          include-hidden-files: true
+          path: |
+            .coverage.*
+            junit-xml-report.*.xml
+          retention-days: 1
+
+  merge-pytests-cov:
+    runs-on: ubuntu-latest
+    name: Merge Pytest reports
+    needs: [repo-name, find-paths, run-all-pytests]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+
+      - name: Download pytest coverage reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ needs.repo-name.outputs.value }}-pytest.${{ inputs.python-version}}.*
+          merge-multiple: true
+
+      - name: Merge reports
+        run: |
+          set -x
+          ls -al
+          pip install coverage junitparser
+
+          # Merge the .coverage files and convert to xml
+          coverage combine
+          coverage xml -o cov-report.xml
+          coverage report -m # report coverage in this console
+
+          # Merge the junit reports
+          junitparser merge junit-xml-report.*.xml junit-xml-report.xml
+
+      - name: Save merged reports as artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.repo-name.outputs.value }}-pytest.report
+          path: |
+            cov-report.xml
+            junit-xml-report.xml
+          retention-days: 1
+
+  run-sonarqube:
+    runs-on: ubuntu-latest
+    name: Run SonarQube
+    needs: [repo-name, find-paths, run-python-tools, merge-pytests-cov]
+    if: always() && !cancelled()
+    permissions:
+      pull-requests: write # for: phwt/sonarqube-quality-gate-action
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_PROJECT_KEY: ${{ needs.repo-name.outputs.sonar }}
+      SONAR_HOST_URL: https://sonarcloud.io
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.caller-repository }}
+          ref: ${{ inputs.caller-ref }}
+          fetch-depth: 0 # Full history for SCM and branch analysis
+
+      - name: Download python and pytest reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ needs.repo-name.outputs.value }}-*.report
+          merge-multiple: true
+
+      - name: Init SonarQube environment
+        id: init
+        run: |
+          set -x
+          ls -al
+
+          # Join tests/ dir names with a ','
+          echo tests=${{ join(fromJson(needs.find-paths.outputs.tests), ',') }} >> $GITHUB_OUTPUT
+
+          # Normalize coverage paths for sonar: replace <source>xxx</source> by <source>.</source>
+          sed -i 's|<source>[^<]*</source>|<source>.</source>|g' ./cov-report.xml || true # only if the file exists
+
+          # Set the sonar command line options, depending on the downloaded report files
+          options=""
+          [[ -f ./bandit-report.json ]] && options="$options -Dsonar.python.bandit.reportPaths=./bandit-report.json"
+          [[ -f ./cov-report.xml ]] && options="$options -Dsonar.python.coverage.reportPaths=./cov-report.xml"
+          [[ -f ./flake8-report.txt ]] && options="$options -Dsonar.python.flake8.reportPaths=./flake8-report.txt"
+          [[ -f ./junit-xml-report.xml ]] && options="$options -Dsonar.junit.reportPaths=./junit-xml-report.xml"
+          [[ -f ./pylint-report.txt ]] && options="$options -Dsonar.python.pylint.reportPaths=./pylint-report.txt"
+          echo options="$options" >> $GITHUB_OUTPUT
+
+      - name: Run SonarCloud Scanner
+        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
+        with:
+          # See doc: https://docs.sonarsource.com/sonarqube-cloud
+          projectBaseDir: .
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=rs-python
+            -Dsonar.branch.name=${{ inputs.caller-ref_name }}
+            -Dsonar.sources=.
+            -Dsonar.tests=${{ steps.init.outputs.tests }}
+            -Dsonar.coverage.exclusions=${{ inputs.sonar-cov-exclusions }}
+            -Dsonar.exclusions=${{ inputs.sonar-exclusions }}
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.python.version=${{ inputs.python-version }}
+            ${{ steps.init.outputs.options }}
+
+      - name: Wait for quality gate result
+        run: sleep 5
+
+      - id: quality-gate-result
+        name: Report quality gate result in the pull request comment
+        uses: phwt/sonarqube-quality-gate-action@e8842ff65b97bfa4fd4effe3ab0909f568d16e91
+        with:
+          sonar-project-key: ${{ env.SONAR_PROJECT_KEY }}
+          sonar-host-url: ${{ env.SONAR_HOST_URL }}
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ inputs.caller-ref_name }}
+
+      - name: Output result
+        run: |
+          echo "Project status: ${{ steps.quality-gate-result.outputs.project-status }}"
+          echo "Quality gate result: ${{ steps.quality-gate-result.outputs.quality-gate-result }}"
+
+      - id: check-gate
+        name: Check quality gate status
+        uses: sonarsource/sonarqube-quality-gate-action@cb3ed20f9fec62b4c3b8ad9e77656c6adaade913
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
