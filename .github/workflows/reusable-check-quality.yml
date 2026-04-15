@@ -446,6 +446,7 @@ jobs:
     permissions:
       pull-requests: write # for: phwt/sonarqube-quality-gate-action
     env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_PROJECT_KEY: ${{ needs.repo-name.outputs.sonar }}
       SONAR_HOST_URL: https://sonarcloud.io
