@@ -37,10 +37,6 @@ on:
         description: Poetry version (when applicable)
         type: string
         default: 2.3.2
-      run-trivy:
-        description: Should we run Trivy ? (security scanner)
-        type: boolean
-        default: true
       ignore-bandit-errors:
         type: boolean
         default: false
@@ -174,7 +170,6 @@ jobs:
   run-trivy:
     runs-on: ubuntu-latest
     name: Run Trivy
-    if: ${{ inputs.run-trivy }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -484,7 +479,7 @@ jobs:
           [[ -f ./bandit-report.json ]] && options="$options -Dsonar.python.bandit.reportPaths=./bandit-report.json"
           [[ -f ./cov-report.xml ]] && options="$options -Dsonar.python.coverage.reportPaths=./cov-report.xml"
           [[ -f ./flake8-report.txt ]] && options="$options -Dsonar.python.flake8.reportPaths=./flake8-report.txt"
-          [[ -f ./junit-xml-report.xml ]] && options="$options -Dsonar.python.xunit.reportPaths=./junit-xml-report.xml"
+          [[ -f ./junit-xml-report.xml ]] && options="$options -Dsonar.junit.reportPaths=./junit-xml-report.xml"
           [[ -f ./pylint-report.txt ]] && options="$options -Dsonar.python.pylint.reportPaths=./pylint-report.txt"
           echo options="$options" >> $GITHUB_OUTPUT
 

@@ -15,12 +15,13 @@
 name: Check code quality on all repositories
 
 on:
-  push: # NOTE: comment this if you don't want this workflow to run for every new push
+  # push: # NOTE: comment this if you don't want this workflow to run for every new push
   workflow_dispatch:
 
 env:
   # Don't call these repos
   IGNORE_REPOS: >
+    __FIRST__
     .github
     auxip-stac-extension
     local-pypi
@@ -31,10 +32,11 @@ env:
     RS-PYTHON.github.io
     rs-statuspage
     upptime
+    __LAST__
 
   # For testing: only call these repos (except the ignored ones) (should be empty to test all repos)
   ONLY_REPOS: ""
-  # ONLY_REPOS: "rs-demo"
+  # ONLY_REPOS: "rs-testmeans"
 
 jobs:
   # For each repository, get the most relevant branch name: current branch name, or develop, or main, or master.
@@ -98,7 +100,6 @@ jobs:
         caller-ref_name: ${{ fromJson(needs.all-repos.outputs.info)[matrix.repo]['ref-name'] }}
         python-version: ${{ matrix.python-version }}
         poetry-version: ${{ matrix.poetry-version }}
-        run-trivy: ${{ matrix.run-trivy }}
         ignore-bandit-errors: ${{ matrix.ignore-bandit-errors }}
         ignore-flake8-errors: ${{ matrix.ignore-flake8-errors }}
         ignore-mypy-errors: ${{ matrix.ignore-mypy-errors }}
@@ -122,7 +123,6 @@ jobs:
           # Default option values, copied from reusable-check-quality.yml
           - python-version: 3.13.12
           - poetry-version: 2.3.2
-          - run-trivy: true
           - ignore-bandit-errors: false
           - ignore-flake8-errors: false
           - ignore-mypy-errors: false
@@ -145,6 +145,13 @@ jobs:
             ignore-flake8-errors: true
             ignore-mypy-errors: true
             ignore-pylint-errors: true
+
+          - repo: rs-dpr-service
+            python-version: 3.11.7
+
+          - repo: rs-server
+            sonar-cov-exclusions: tests,tests/**,**/tests/**,resources/sync_config_files.py
+            sonar-exclusions: tests,tests/**,**/tests/**,services/common/rs_server_common/footprint_facility.py
 
           - repo: rs-testmeans
             ignore-bandit-errors: true
