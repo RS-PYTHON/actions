@@ -75,15 +75,18 @@ on:
 
 jobs:
 
-  repo-name:
+  params:
     runs-on: ubuntu-latest
-    name: Get Git repository name
+    name: Parameters
     outputs:
       # Only keep the git repository name from caller-repository which is <github-organization>/<git-repo>
-      value: ${{ steps.setup.outputs.value }}
+      repo-name: ${{ steps.setup.outputs.repo-name }}
+
+      # Run Sonar ?
+      run-sonar: ${{ steps.setup.outputs.run-sonar }}
 
       # <github-organization>_<git-repo>, used by SonarQube
-      sonar: ${{ steps.setup.outputs.sonar }}
+      sonar-name: ${{ steps.setup.outputs.sonar-name }}
     env:
         caller-repository: ${{ inputs.caller-repository }}
     steps:
@@ -93,10 +96,13 @@ jobs:
           org_repo=${{ env.caller-repository }}
 
           # See: https://stackoverflow.com/a/19482947
-          echo value=${org_repo##*/} >> $GITHUB_OUTPUT # keep value after the last /
+          echo repo-name=${org_repo##*/} >> $GITHUB_OUTPUT # keep value after the last /
+
+          # Run Sonar only if this secret is set
+          ([[ -n "${{ secrets.SONAR_TOKEN }}" ]] && echo run-sonar=true || echo run-sonar=false) >> $GITHUB_OUTPUT
 
           # Replace / by _
-          echo sonar=${org_repo//\//_} >> $GITHUB_OUTPUT
+          echo sonar-name=${org_repo//\//_} >> $GITHUB_OUTPUT
 
   find-paths:
     runs-on: ubuntu-latest
@@ -205,7 +211,7 @@ jobs:
   run-python-tools:
     runs-on: ubuntu-latest
     name: Run Python tools
-    needs: [repo-name, find-paths]
+    needs: [params, find-paths]
     if: ${{ needs.find-paths.outputs.py != '[]' }} # only for python projects
     env:
       SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
@@ -277,14 +283,14 @@ jobs:
         if: ${{ !cancelled() && matrix.report-path }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.repo-name.outputs.value }}-${{ matrix.tool }}.report
+          name: ${{ needs.params.outputs.repo-name }}-${{ matrix.tool }}.report
           path: ${{ matrix.report-path }}
           retention-days: 1
 
   run-all-pytests:
     runs-on: ubuntu-latest
     name: Run Pytest
-    needs: [repo-name, find-paths]
+    needs: [params, find-paths]
     if: ${{ needs.find-paths.outputs.tests != '[]' }} # only if we have tests/ dirs
     strategy:
       fail-fast: true # one tests/ dir that fails will cancel the others
@@ -392,7 +398,7 @@ jobs:
         if: always() && !cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.repo-name.outputs.value }}-pytest.${{ matrix.python-version}}.${{ steps.run.outputs.dash_dir }}
+          name: ${{ needs.params.outputs.repo-name }}-pytest.${{ matrix.python-version}}.${{ steps.run.outputs.dash_dir }}
           include-hidden-files: true
           path: |
             .coverage.*
@@ -402,7 +408,7 @@ jobs:
   merge-pytests-cov:
     runs-on: ubuntu-latest
     name: Merge Pytest reports
-    needs: [repo-name, find-paths, run-all-pytests]
+    needs: [params, find-paths, run-all-pytests]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -412,7 +418,7 @@ jobs:
       - name: Download pytest coverage reports
         uses: actions/download-artifact@v8
         with:
-          pattern: ${{ needs.repo-name.outputs.value }}-pytest.${{ inputs.python-version}}.*
+          pattern: ${{ needs.params.outputs.repo-name }}-pytest.${{ inputs.python-version}}.*
           merge-multiple: true
 
       - name: Merge reports
@@ -432,7 +438,7 @@ jobs:
       - name: Save merged reports as artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.repo-name.outputs.value }}-pytest.report
+          name: ${{ needs.params.outputs.repo-name }}-pytest.report
           path: |
             cov-report.xml
             junit-xml-report.xml
@@ -441,18 +447,21 @@ jobs:
   run-sonarqube:
     runs-on: ubuntu-latest
     name: Run SonarQube
-    needs: [repo-name, find-paths, run-python-tools, merge-pytests-cov]
-    if: ${{ always() && !cancelled() && (github.actor != 'dependabot[bot]') }} # dependabot does not have access to secrets
+    needs: [params, find-paths, run-python-tools, merge-pytests-cov]
+    if: ${{
+      always() &&
+      !cancelled() &&
+      (needs.params.outputs.run-sonar == 'true') &&
+      (github.actor != 'dependabot[bot]') }} # dependabot does not have access to secrets
     permissions:
       contents: read # for: actions/checkout with fetch-depth:0 on private repositories
       pull-requests: write # for: phwt/sonarqube-quality-gate-action
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_PROJECT_KEY: ${{ needs.repo-name.outputs.sonar }}
+      SONAR_PROJECT_KEY: ${{ needs.params.outputs.sonar-name }}
       SONAR_HOST_URL: https://sonarcloud.io
     steps:
       - name: Checkout repository
-        if: ${{ env.SONAR_TOKEN }}
         uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
@@ -460,15 +469,13 @@ jobs:
           fetch-depth: 0 # Full history for SCM and branch analysis
 
       - name: Download python and pytest reports
-        if: ${{ env.SONAR_TOKEN }}
         uses: actions/download-artifact@v8
         with:
-          pattern: ${{ needs.repo-name.outputs.value }}-*.report
+          pattern: ${{ needs.params.outputs.repo-name }}-*.report
           merge-multiple: true
 
       - name: Init SonarQube environment
         id: init
-        if: ${{ env.SONAR_TOKEN }}
         run: |
           set -x
           ls -al
@@ -489,7 +496,6 @@ jobs:
           echo options="$options" >> $GITHUB_OUTPUT
 
       - name: Run SonarCloud Scanner
-        if: ${{ env.SONAR_TOKEN }}
         uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
         with:
           # See doc: https://docs.sonarsource.com/sonarqube-cloud
@@ -507,7 +513,6 @@ jobs:
             ${{ steps.init.outputs.options }}
 
       - name: Wait for quality gate result
-        if: ${{ env.SONAR_TOKEN }}
         run: sleep 5
 
       - id: quality-gate-result
@@ -521,14 +526,12 @@ jobs:
           branch: ${{ inputs.caller-ref_name }}
 
       - name: Output result
-        if: ${{ env.SONAR_TOKEN }}
         run: |
           echo "Project status: ${{ steps.quality-gate-result.outputs.project-status }}"
           echo "Quality gate result: ${{ steps.quality-gate-result.outputs.quality-gate-result }}"
 
       - name: Check quality gate status
         id: check-gate
-        if: ${{ env.SONAR_TOKEN }}
         uses: sonarsource/sonarqube-quality-gate-action@cb3ed20f9fec62b4c3b8ad9e77656c6adaade913
         timeout-minutes: 5
         env:
