@@ -451,13 +451,16 @@ jobs:
       SONAR_PROJECT_KEY: ${{ needs.repo-name.outputs.sonar }}
       SONAR_HOST_URL: https://sonarcloud.io
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout repository
+        if: ${{ env.SONAR_TOKEN }}
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
           fetch-depth: 0 # Full history for SCM and branch analysis
 
       - name: Download python and pytest reports
+        if: ${{ env.SONAR_TOKEN }}
         uses: actions/download-artifact@v8
         with:
           pattern: ${{ needs.repo-name.outputs.value }}-*.report
@@ -465,6 +468,7 @@ jobs:
 
       - name: Init SonarQube environment
         id: init
+        if: ${{ env.SONAR_TOKEN }}
         run: |
           set -x
           ls -al
@@ -485,6 +489,7 @@ jobs:
           echo options="$options" >> $GITHUB_OUTPUT
 
       - name: Run SonarCloud Scanner
+        if: ${{ env.SONAR_TOKEN }}
         uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
         with:
           # See doc: https://docs.sonarsource.com/sonarqube-cloud
@@ -502,6 +507,7 @@ jobs:
             ${{ steps.init.outputs.options }}
 
       - name: Wait for quality gate result
+        if: ${{ env.SONAR_TOKEN }}
         run: sleep 5
 
       - id: quality-gate-result
@@ -515,12 +521,14 @@ jobs:
           branch: ${{ inputs.caller-ref_name }}
 
       - name: Output result
+        if: ${{ env.SONAR_TOKEN }}
         run: |
           echo "Project status: ${{ steps.quality-gate-result.outputs.project-status }}"
           echo "Quality gate result: ${{ steps.quality-gate-result.outputs.quality-gate-result }}"
 
-      - id: check-gate
-        name: Check quality gate status
+      - name: Check quality gate status
+        id: check-gate
+        if: ${{ env.SONAR_TOKEN }}
         uses: sonarsource/sonarqube-quality-gate-action@cb3ed20f9fec62b4c3b8ad9e77656c6adaade913
         timeout-minutes: 5
         env:
