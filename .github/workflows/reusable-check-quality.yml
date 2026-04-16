@@ -91,6 +91,8 @@ jobs:
         caller-repository: ${{ inputs.caller-repository }}
     steps:
       - id: setup
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           set -x
           org_repo=${{ env.caller-repository }}
@@ -99,7 +101,7 @@ jobs:
           echo repo-name=${org_repo##*/} >> $GITHUB_OUTPUT # keep value after the last /
 
           # Run Sonar only if this secret is set
-          ([[ -n "${{ secrets.SONAR_TOKEN }}" ]] && echo run-sonar=true || echo run-sonar=false) >> $GITHUB_OUTPUT
+          ([[ -n "$SONAR_TOKEN" ]] && echo run-sonar=true || echo run-sonar=false) >> $GITHUB_OUTPUT
 
           # Replace / by _
           echo sonar-name=${org_repo//\//_} >> $GITHUB_OUTPUT
