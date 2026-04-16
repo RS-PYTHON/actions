@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
 
 env:
-  # Don't call these repos
+  # Don't call these repos (separated by spaces)
   IGNORE_REPOS: >
     __FIRST__
     .github
@@ -34,9 +34,9 @@ env:
     upptime
     __LAST__
 
-  # For testing: only call these repos (except the ignored ones) (should be empty to test all repos)
+  # For testing: only call these repos (except the ignored ones) (separated by spaces) (should be empty to test all repos)
   ONLY_REPOS: ""
-  # ONLY_REPOS: "rs-testmeans"
+  # ONLY_REPOS: "e.g. repo1 repo2" # if you change this for testing, don't commit it
 
 jobs:
   # For each repository, get the most relevant branch name: current branch name, or develop, or main, or master.
@@ -68,7 +68,7 @@ jobs:
 
             # Test if the current branch name exists for this repo.
             # Then test develop, main and master.
-            for test_branch_name in ${{ github.ref_name }} develop main and master; do
+            for test_branch_name in ${{ github.ref_name }} develop main master; do
               if gh api repos/${{ github.repository_owner }}/${repo_name}/branches/${test_branch_name} --silent; then
                 repo_ref_name=$test_branch_name
                 if [[ $test_branch_name == ${{ github.ref_name }} ]]; then # if the current branch name exists for the tested repo
@@ -79,6 +79,11 @@ jobs:
                 break
               fi
             done
+
+            if [[ -z $repo_ref ]]; then
+              >&2 echo "Could not find a git branch for '${repo_name}'"
+              exit 2
+            fi
 
             # Update the json array with repo_name
             repo_names="${repo_names}\"${repo_name}\","
