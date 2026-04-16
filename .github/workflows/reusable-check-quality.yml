@@ -442,7 +442,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Run SonarQube
     needs: [repo-name, find-paths, run-python-tools, merge-pytests-cov]
-    if: always() && !cancelled()
+    if: ${{ always() && !cancelled() && (github.actor != 'dependabot[bot]') }} # dependabot does not have access to secrets
     permissions:
       pull-requests: write # for: phwt/sonarqube-quality-gate-action
     env:
