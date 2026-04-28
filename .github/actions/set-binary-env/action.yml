@@ -38,18 +38,22 @@ runs:
   using: "composite"
   steps:
       - id: set-env
+        env:
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
+          WHEEL_VERSION_NAME: ${{ inputs.wheel_version_name }}
+          MANUAL_TAG: ${{ inputs.manual_tag }}
         run: |
           set -x
 
           # Get the current branch name (or source branch for a pull request)
           if [[ ${{ github.event_name }} == pull_request ]]; then
-            branch_name="${{ github.event.pull_request.head.ref }}"
+            branch_name="$SOURCE_BRANCH"
           else
             branch_name="${{ github.ref_name }}"
           fi
 
           # The first docker tag is the wheel version name
-          docker_tags="${{ inputs.wheel_version_name }}"
+          docker_tags="$WHEEL_VERSION_NAME"
 
           # Calculate the second docker tag.
           # For a pull request, use the branch name
@@ -62,7 +66,7 @@ runs:
 
           # For a manual trigger, use the user-defined tag
           elif [[ ${{ github.event_name }} == workflow_dispatch ]]; then
-            docker_tags="${docker_tags},${{ inputs.manual_tag }}"
+            docker_tags="${docker_tags},${MANUAL_TAG}"
 
           else
             >&2 echo "Unknown trigger"
