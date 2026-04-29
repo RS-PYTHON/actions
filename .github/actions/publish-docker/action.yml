@@ -43,9 +43,6 @@ inputs:
   branch_name:
     description: Current git branch name
     required: true
-  debug_mode:
-    description: Add debug tools to the docker image
-    required: false
   build_args:
     description: List of build-time variables
     required: false
@@ -79,7 +76,8 @@ runs:
         username: ${{ github.actor }}
         password: ${{ inputs.github_token }}
 
-    - id: docker_images
+    - name: Set environment
+      id: docker_images
       env:
         IMAGE_TAGS: ${{ inputs.image_tags }}
         DOCKER_IMAGE_BASE: "${{ env.DOCKER_REGISTRY }}/${{ inputs.image_basename }}${{ inputs.image_suffix }}" # without :tag
@@ -121,44 +119,6 @@ runs:
       with:
         images: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }} # ghcr.io/RS-PYTHON/rs-server
 
-    # Replace some parts of the Dockerfile depending on wether we're in debug mode or not.
-    # It would be cleaner to use 'if' blocks in the Dockerfile but this doesn't exist...
-    - name: Configure Dockerfile for debug mode
-      env:
-        DEBUG_MODE: ${{ inputs.debug_mode }}
-        BRANCH_NAME: ${{ inputs.branch_name }}
-        DOCKERFILE: ${{ inputs.dockerfile }}
-      run: |
-        set -x
-        if [[ $DEBUG_MODE == true ]]; then
-          commands=$(cat << EOF
-        USER root
-        COPY ./git_debug_image.sh ./restore-apt.sh /usr/local/bin/
-        # Use ';' not '&&' because they are not well handled by awk.
-        RUN set -e; \
-            cd /usr/local/bin/; \
-            chmod u+x ./git_debug_image.sh ./restore-apt.sh; \
-            ./git_debug_image.sh $BRANCH_NAME; \
-            rm -f ./git_debug_image.sh ./restore-apt.sh
-        WORKDIR /home/user/rs-server
-        EOF
-          )
-          # Use awk instead of sed for multiline replace, see: https://stackoverflow.com/a/10107668
-          awk -v r="$commands" '{gsub(/# \[DEBUG_MODE_COMMANDS\]/,r)}1' $DOCKERFILE > tmp
-          mv tmp $DOCKERFILE
-          sed -i "s@\[DEBUG_MODE_RELOAD\]@--reload@g" $DOCKERFILE
-          sed -i "s@\[DEBUG_MODE_RELOAD_FRONTEND\]@--reload@g" $DOCKERFILE
-          sed -i "s@# \[DEBUG_MODE_RELOAD_CATALOG\]@ENV RELOAD=true@g" $DOCKERFILE
-        else
-          sed -i "s@# \[DEBUG_MODE_COMMANDS\]@@g" $DOCKERFILE
-          sed -i "s@, \"\[DEBUG_MODE_RELOAD\]\"@@g" $DOCKERFILE
-          sed -i "s@\[DEBUG_MODE_RELOAD_FRONTEND\]@@g" $DOCKERFILE
-          sed -i "s@# \[DEBUG_MODE_RELOAD_CATALOG\]@@g" $DOCKERFILE
-        fi
-        cat $DOCKERFILE
-      shell: bash
-
-    # Checkout code from the current branch and build Docker image.
     - name: Build Docker image
       uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
       with:
