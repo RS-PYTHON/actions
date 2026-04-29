@@ -19,6 +19,9 @@ inputs:
   python-version:
     description: "Python version"
     required: false
+  poetry-version:
+    description: "Poetry version"
+    default: 2.3.2
 
 runs:
   using: "composite"
@@ -32,5 +35,10 @@ runs:
         # Then follow https://github.com/actions/setup-python/blob/v6/docs/advanced-usage.md#caching-packages
         # cache: poetry
 
-    - run: pip install poetry==2.3.2
+    - env:
+        POETRY_VERSION: ${{ inputs.poetry-version }}
+      run: |
+        set -x
+        pip install poetry==$POETRY_VERSION
+        pip install poetry-dynamic-versioning
       shell: bash

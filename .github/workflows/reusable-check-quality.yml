@@ -346,6 +346,7 @@ jobs:
 
             # Install poetry
             pip install "poetry==${{ env.poetry-version }}"
+            pip install poetry-dynamic-versioning
 
             # Regenerate the poetry.lock file for non-standard python versions
             [[ "${{ matrix.python-version }}" != "${{ env.python-version }}" ]] && poetry lock --regenerate
