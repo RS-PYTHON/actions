@@ -29,7 +29,7 @@ inputs:
     description: Docker image name suffix e.g. _services-cadip
     required: true
   image_tags:
-    description: Docker image tags, as a comma-separated list e.g. 'vx.y.z,latest'
+    description: Docker image tags as '<wheel_version_name>,<latest|branch_name|manual_tag>'
     required: true
   dockerhub_username:
     description: vars.DOCKERHUB_USERNAME
@@ -51,9 +51,9 @@ outputs:
   docker_images:
     description: Docker images, as a comma-separated list e.g. 'name:vx.y.z,name:latest'
     value: ${{ steps.docker_images.outputs.all_docker_images }}
-  last_image_tag:
-    description: Last Docker image tag used in images
-    value: ${{ steps.docker_images.outputs.last_image_tag }}
+  latest_or_branch_tag:
+    description: Docker image tag as <latest|branch_name|manual_tag> (without special characters and in lowercase)
+    value: ${{ steps.docker_images.outputs.latest_or_branch_tag }}
 
 runs:
   using: "composite"
@@ -89,12 +89,7 @@ runs:
 
         # For each docker image tag to set, split by ,
         for image_tag in ${IMAGE_TAGS//,/ }; do
-
-          # Only alphanumeric characters, . - and _ are allowed in docker image tags.
-          # Replace other characters by -
-          image_tag=$(sed "s/[^a-zA-Z0-9\.\-\_]/-/g" <<< "$image_tag")
-
-          docker_image="${DOCKER_IMAGE_BASE,,}:${image_tag,,}" # lowercase
+          docker_image="${DOCKER_IMAGE_BASE,,}:${image_tag}" # lowercase
           all_docker_images="${all_docker_images}${docker_image},"
         done
 
@@ -105,8 +100,8 @@ runs:
         # See: https://docs.docker.com/build/cache/optimize/#use-an-external-cache
         cache_image="${DOCKER_IMAGE_BASE,,}:${image_tag}-cache" # lowercase
 
-        echo "last_docker_image=${docker_image}" >> "$GITHUB_ENV"
-        echo "last_image_tag=${image_tag}" >> "$GITHUB_OUTPUT"
+        echo "latest_or_branch_image=${docker_image}" >> "$GITHUB_ENV"
+        echo "latest_or_branch_tag=${image_tag}" >> "$GITHUB_OUTPUT"
         echo "all_docker_images=${all_docker_images}" >> "$GITHUB_ENV"
         echo "all_docker_images=${all_docker_images}" >> "$GITHUB_OUTPUT"
         echo "cache_image=${cache_image}" >> "$GITHUB_ENV"
@@ -140,7 +135,7 @@ runs:
         TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
       with:
         version: v0.69.3
-        image-ref: ${{ env.last_docker_image }}
+        image-ref: ${{ env.latest_or_branch_image }}
         format: sarif
         output: trivy-results-docker.sarif
         exit-code: 0

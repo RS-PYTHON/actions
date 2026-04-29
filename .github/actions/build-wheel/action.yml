@@ -28,13 +28,13 @@ inputs:
 
 outputs:
   version_name:
-    description: version name
+    description: Wheel version name, calculated from the git tag or commit, e.g. 'x.y' or 'x.y.postz.dev0'
     value: ${{ steps.version_name.outputs.version_name }}
   package_name:
-    description: .whl package name
+    description: Wheel package name e.g. 'component-x.y.postz.dev0-py3-none-any.whl'
     value: ${{ steps.package_name.outputs.package_name }}
   sdist_name:
-    description: .tar.gz sdist name
+    description: Source package name e.g. 'component-x.y.postz.dev0-py3-none-any.tar.gz'
     value: ${{ steps.sdist_name.outputs.sdist_name }}
 
 runs:

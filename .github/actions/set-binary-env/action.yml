@@ -17,18 +17,23 @@ description: Set environment for publishing binaries (wheels and Docker images)
 
 inputs:
   wheel_version_name:
-    description: Wheel version name, calculated from the git commit id, e.g. x.y.postz.dev0
+    description: Wheel version name, calculated from the git tag or commit, e.g. 'x.y' or 'x.y.postz.dev0'
     required: true
   manual_tag:
     description: User-defined tag from a manual trigger
     required: false
+  force_temp_tag:
+    description: Always use a temp docker tag ?
+    default: "false"
 
 outputs:
   branch_name:
     description: Current branch name (or source branch for a pull request)
     value: ${{ steps.set-env.outputs.branch_name }}
   docker_tags:
-    description: Docker tags to set to new images
+    description: >
+      Docker tags to set to new images as '<wheel_version_name>,<latest|branch_name|manual_tag>'
+      (without special characters and in lowercase)
     value: ${{ steps.set-env.outputs.docker_tags }}
   docker_temp_tag:
     description: Temp Docker tag to set to new images (real tags will be set after the tests are passed)
@@ -42,6 +47,7 @@ runs:
           SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
           WHEEL_VERSION_NAME: ${{ inputs.wheel_version_name }}
           MANUAL_TAG: ${{ inputs.manual_tag }}
+          FORCE_TEMP_TAG: ${{ inputs.force_temp_tag }}
         run: |
           set -x
 
@@ -53,12 +59,12 @@ runs:
           fi
 
           # The first docker tag is the wheel version name
-          docker_tags="$WHEEL_VERSION_NAME"
+          first_docker_tag="$WHEEL_VERSION_NAME"
 
           # Calculate the second docker tag.
           # For a pull request, use the branch name
           if [[ ${{ github.event_name }} == pull_request ]]; then
-            docker_tags="${docker_tags},${branch_name}"
+            second_docker_tag="${branch_name}"
 
           # For a push on develop or a tag, use the docker tag :latest
           elif [[ ${{ github.event_name }} == push ]]; then
@@ -73,9 +79,22 @@ runs:
             exit 1
           fi
 
+          # Only alphanumeric characters, . - and _ are allowed in docker image tags.
+          # Replace other characters by -
+          first_docker_tag=$(sed "s/[^a-zA-Z0-9\.\-\_]/-/g" <<< "$first_docker_tag")
+          second_docker_tag=$(sed "s/[^a-zA-Z0-9\.\-\_]/-/g" <<< "$second_docker_tag")
+
+          # Join docker tags with a ','
+          docker_tags=${first_docker_tag},${second_docker_tag}
+
+          # Lowercase
+          docker_tags="${docker_tags,,}"
+
           # The 'latest' image tag is sensitive, so we want to push it only after the tests have passed.
           # In the meantime, we'll use a temporary unique docker tag = the ci/cd workflow run id.
-          [[ ",${docker_tags}," =~ ",latest," ]] && docker_temp_tag="run-${{github.run_id}}"
+          if [[ (",${docker_tags}," =~ ",latest,") || ($FORCE_TEMP_TAG == true) ]]; then
+            docker_temp_tag="run-${{github.run_id}}"
+          fi
 
           # Save values
           echo "branch_name=$branch_name" >> $GITHUB_OUTPUT
