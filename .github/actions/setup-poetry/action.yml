@@ -18,7 +18,7 @@ description: "'poetry install' this project and dependencies"
 inputs:
   python-version:
     description: "Python version"
-    required: false
+    default: 3.13.12
   poetry-version:
     description: "Poetry version"
     default: 2.3.2
@@ -28,7 +28,7 @@ runs:
   steps:
     - uses: actions/setup-python@v6
       with:
-        python-version: ${{ case(inputs.python-version != '', inputs.python-version, env.PYTHON_VERSION) }}
+        python-version: ${{ case(env.PYTHON_VERSION != '', env.PYTHON_VERSION, inputs.python-version) }}
         # NOTE: remove the poetry cache because it's not so fast.
         # Note that to make it work, you need to run actions/checkout@v6
         # with: ref: ${{ case(github.event_name == 'pull_request', github.head_ref, '') }}

@@ -36,7 +36,9 @@ outputs:
       (without special characters and in lowercase)
     value: ${{ steps.set-env.outputs.docker_tags }}
   docker_temp_tag:
-    description: Temp Docker tag to set to new images (real tags will be set after the tests are passed)
+    description: >
+      Temp Docker tag to set to new images as 'run-<workflow_run_id>'
+      (real tags will be set after the tests are passed)
     value: ${{ steps.set-env.outputs.docker_temp_tag }}
 
 runs:

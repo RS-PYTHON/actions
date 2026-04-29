@@ -223,7 +223,7 @@ jobs:
         tool: [bandit, flake8, mypy, pylint, safety]
 
         include:
-          - if: always() && !cancelled()
+          - if: success() && !cancelled()
           - tool: bandit
             continue-on-error: ${{ inputs.ignore-bandit-errors }}
             version: 1.9.4
