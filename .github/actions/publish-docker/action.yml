@@ -29,7 +29,7 @@ inputs:
     description: Docker image name suffix e.g. _services-cadip
     required: true
   image_tags:
-    description: Docker image tags as '<wheel_version_name>,<latest|branch_name|manual_tag>'
+    description: Docker image tags as '<wheel_version_name>,<latest|branch_name|manual_tag>' or '<temp_tag>'
     required: true
   dockerhub_username:
     description: vars.DOCKERHUB_USERNAME
@@ -49,10 +49,11 @@ inputs:
 
 outputs:
   docker_images:
-    description: Docker images, as a comma-separated list e.g. 'name:vx.y.z,name:latest'
+    description: Pushed Docker images, as a comma-separated list e.g. 'name:vx.y.z,name:latest'
     value: ${{ steps.docker_images.outputs.all_docker_images }}
   latest_or_branch_tag:
-    description: Docker image tag as <latest|branch_name|manual_tag> (without special characters and in lowercase)
+    description: >
+      Pushed Docker image tag as <latest|branch_name|manual_tag|temp_tag> (without special characters and in lowercase)
     value: ${{ steps.docker_images.outputs.latest_or_branch_tag }}
 
 runs:
