@@ -18,7 +18,7 @@ description: Set environment for publishing binaries (wheels and Docker images)
 inputs:
   wheel_version_name:
     description: Wheel version name, calculated from the git tag or commit, e.g. 'x.y' or 'x.y.postz.dev0'
-    required: true
+    required: false
   manual_tag:
     description: User-defined tag from a manual trigger
     required: false
@@ -32,7 +32,7 @@ outputs:
     value: ${{ steps.set-env.outputs.branch_name }}
   docker_tags:
     description: >
-      Docker tags to set to new images as '<wheel_version_name>,<latest|branch_name|manual_tag>'
+      Docker tags to set to new images as '<wheel_version_name>,<branch_name>,<latest|branch_name|manual_tag>'
       (without special characters and in lowercase)
     value: ${{ steps.set-env.outputs.docker_tags }}
   docker_temp_tag:
@@ -44,62 +44,62 @@ outputs:
 runs:
   using: "composite"
   steps:
-      - id: set-env
-        env:
-          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
-          WHEEL_VERSION_NAME: ${{ inputs.wheel_version_name }}
-          MANUAL_TAG: ${{ inputs.manual_tag }}
-          FORCE_TEMP_TAG: ${{ inputs.force_temp_tag }}
-        run: |
-          set -x
+    - id: set-env
+      env:
+        # Current branch name (or source branch for a pull request)
+        BRANCH_NAME: ${{ case(github.event_name == 'pull_request', github.event.pull_request.head.ref, github.ref_name) }}
+        # Are we pushing a new git tag ?
+        PUSH_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+        WHEEL_VERSION_NAME: ${{ inputs.wheel_version_name }}
+        MANUAL_TAG: ${{ inputs.manual_tag }}
+        FORCE_TEMP_TAG: ${{ inputs.force_temp_tag }}
+      run: |
+        set -x
 
-          # Get the current branch name (or source branch for a pull request)
-          if [[ ${{ github.event_name }} == pull_request ]]; then
-            branch_name="$SOURCE_BRANCH"
-          else
-            branch_name="${{ github.ref_name }}"
-          fi
+        # Docker tags as an array
+        tags_array=()
 
-          # The first docker tag is the wheel version name
-          first_docker_tag="$WHEEL_VERSION_NAME"
+        # First tag is the wheel version name
+        tags_array+=("$WHEEL_VERSION_NAME")
 
-          # Calculate the second docker tag.
-          # For a pull request, use the branch name
-          if [[ ${{ github.event_name }} == pull_request ]]; then
-            second_docker_tag="${branch_name}"
+        # Second tag is the branch name
+        tags_array+=("$BRANCH_NAME")
 
-          # For a push on develop or a tag, use the docker tag :latest
-          elif [[ ${{ github.event_name }} == push ]]; then
-            docker_tags="${docker_tags},latest"
+        # For a push on develop or a tag, use the docker tag :latest
+        if [[ ($PUSH_TAG == true) || ($BRANCH_NAME == develop) ]]; then
+          tags_array+=(latest)
 
-          # For a manual trigger, use the user-defined tag
-          elif [[ ${{ github.event_name }} == workflow_dispatch ]]; then
-            docker_tags="${docker_tags},${MANUAL_TAG}"
+        # For a manual trigger, use the user-defined tag
+        elif [[ ${{ github.event_name }} == workflow_dispatch ]]; then
+          tags_array+=("$MANUAL_TAG")
+        fi
 
-          else
-            >&2 echo "Unknown trigger"
-            exit 1
-          fi
+        # Docker tags as a comma separated string
+        docker_tags=
+        for tag in "${tags_array[@]}"; do
 
           # Only alphanumeric characters, . - and _ are allowed in docker image tags.
           # Replace other characters by -
-          first_docker_tag=$(sed "s/[^a-zA-Z0-9\.\-\_]/-/g" <<< "$first_docker_tag")
-          second_docker_tag=$(sed "s/[^a-zA-Z0-9\.\-\_]/-/g" <<< "$second_docker_tag")
+          tag=$(sed "s/[^a-zA-Z0-9\.\-\_]/-/g" <<< "$tag")
 
-          # Join docker tags with a ','
-          docker_tags=${first_docker_tag},${second_docker_tag}
+          # If this tag was already saved, do nothing
+          [[ ",${docker_tags}," =~ ",${tag}," ]] && continue
 
-          # Lowercase
-          docker_tags="${docker_tags,,}"
+          # Join tags with a ,
+          [[ -n $docker_tags ]] && docker_tags="${docker_tags},"
+          docker_tags="${docker_tags}${tag,,}" # lowercase
+        done
 
-          # The 'latest' image tag is sensitive, so we want to push it only after the tests have passed.
-          # In the meantime, we'll use a temporary unique docker tag = the ci/cd workflow run id.
-          if [[ (",${docker_tags}," =~ ",latest,") || ($FORCE_TEMP_TAG == true) ]]; then
-            docker_temp_tag="run-${{github.run_id}}"
-          fi
+        # The 'latest' image tag is sensitive, so we want to push it only after the tests have passed.
+        # In the meantime, we'll use a temporary unique docker tag = the ci/cd workflow run id.
+        if [[ (",${docker_tags}," =~ ",latest,") || ($FORCE_TEMP_TAG == true) ]]; then
+          docker_temp_tag="run-${{github.run_id}}"
+        fi
 
-          # Save values
-          echo "branch_name=$branch_name" >> $GITHUB_OUTPUT
-          echo "docker_tags=$docker_tags" >> $GITHUB_OUTPUT
-          echo "docker_temp_tag=$docker_temp_tag" >> $GITHUB_OUTPUT
-        shell: bash
+        # Save values
+        echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        echo "docker_tags=$docker_tags" >> $GITHUB_OUTPUT
+        echo "docker_temp_tag=$docker_temp_tag" >> $GITHUB_OUTPUT
+
+        ls /crash
+      shell: bash
