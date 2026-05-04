@@ -32,14 +32,14 @@ outputs:
     value: ${{ steps.set-env.outputs.branch_name }}
   docker_tags:
     description: >
-      Docker tags to set to new images as '<wheel_version_name>,<branch_name>[,<latest|manual_tag>]'
-      (without special characters and in lowercase)
+      Docker tags to set to new images, either as '<wheel_version_name>,<branch_name>[,<latest|manual_tag>]'
+      or as a temporary tag 'run-<workflow_run_id>' (final tags will be set after the tests are passed).
+      All tags are in lowercase and without special characters
     value: ${{ steps.set-env.outputs.docker_tags }}
-  docker_temp_tag:
+  docker_final_tags:
     description: >
-      Temp Docker tag to set to new images as 'run-<workflow_run_id>'
-      (real tags will be set after the tests are passed)
-    value: ${{ steps.set-env.outputs.docker_temp_tag }}
+      Final docker tags to set after the tests are passed. Defined only if 'docker_tags' is a temporary tag.
+    value: ${{ steps.set-env.outputs.docker_final_tags }}
   debug_mode:
     description: Debug mode is always set to 'true' except for new tags
     value: ${{ steps.set-env.outputs.debug_mode }}
@@ -106,12 +106,13 @@ runs:
         # The 'latest' image tag is sensitive, so we want to push it only after the tests have passed.
         # In the meantime, we'll use a temporary unique docker tag = the ci/cd workflow run id.
         if [[ (",${docker_tags}," =~ ",latest,") || ($FORCE_TEMP_TAG == true) ]]; then
-          docker_temp_tag="run-${{github.run_id}}"
+          docker_final_tags=$docker_tags
+          docker_tags="run-${{github.run_id}}"
         fi
 
         # Save values
         echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         echo "docker_tags=$docker_tags" >> $GITHUB_OUTPUT
-        echo "docker_temp_tag=$docker_temp_tag" >> $GITHUB_OUTPUT
+        echo "docker_final_tags=$docker_final_tags" >> $GITHUB_OUTPUT
         echo "debug_mode=$debug_mode" >> $GITHUB_OUTPUT
       shell: bash
