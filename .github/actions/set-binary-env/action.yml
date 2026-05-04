@@ -32,7 +32,7 @@ outputs:
     value: ${{ steps.set-env.outputs.branch_name }}
   docker_tags:
     description: >
-      Docker tags to set to new images as '<wheel_version_name>,<branch_name>,<latest|branch_name|manual_tag>'
+      Docker tags to set to new images as '<wheel_version_name>,<branch_name>[,<latest|manual_tag>]'
       (without special characters and in lowercase)
     value: ${{ steps.set-env.outputs.docker_tags }}
   docker_temp_tag:
@@ -40,6 +40,9 @@ outputs:
       Temp Docker tag to set to new images as 'run-<workflow_run_id>'
       (real tags will be set after the tests are passed)
     value: ${{ steps.set-env.outputs.docker_temp_tag }}
+  debug_mode:
+    description: Debug mode is always set to 'true' except for new tags
+    value: ${{ steps.set-env.outputs.debug_mode }}
 
 runs:
   using: "composite"
@@ -48,46 +51,56 @@ runs:
       env:
         # Current branch name (or source branch for a pull request)
         BRANCH_NAME: ${{ case(github.event_name == 'pull_request', github.event.pull_request.head.ref, github.ref_name) }}
-        # Are we pushing a new git tag ?
-        PUSH_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
         WHEEL_VERSION_NAME: ${{ inputs.wheel_version_name }}
         MANUAL_TAG: ${{ inputs.manual_tag }}
         FORCE_TEMP_TAG: ${{ inputs.force_temp_tag }}
       run: |
         set -x
 
-        # Docker tags as an array
-        tags_array=()
-
-        # First tag is the wheel version name
-        tags_array+=("$WHEEL_VERSION_NAME")
-
-        # Second tag is the branch name
-        tags_array+=("$BRANCH_NAME")
-
-        # For a push on develop or a tag, use the docker tag :latest
-        if [[ ($PUSH_TAG == true) || ($BRANCH_NAME == develop) ]]; then
-          tags_array+=(latest)
-
-        # For a manual trigger, use the user-defined tag
-        elif [[ ${{ github.event_name }} == workflow_dispatch ]]; then
-          tags_array+=("$MANUAL_TAG")
+        # Are we pushing a tag ?
+        if [[ "${{ github.ref_type }}" == tag ]]; then
+          is_tag=true
+          debug_mode=false
+        else
+          is_tag=false
+          debug_mode=true
         fi
 
-        # Docker tags as a comma separated string
+        # Docker tags as a comma-separated string
+        raw_tags=
+
+        # First tag is the wheel version name
+        raw_tags=${raw_tags},${WHEEL_VERSION_NAME}
+
+        # Second tag is the branch name
+        raw_tags=${raw_tags},${BRANCH_NAME}
+
+        # For a tag or a push on develop, add the docker tag ':latest'
+        if [[ ($is_tag == true) || ($BRANCH_NAME == develop) ]]; then
+          raw_tags=${raw_tags},latest
+
+        # For a manual trigger, add the user-defined tag
+        elif [[ ${{ github.event_name }} == workflow_dispatch ]]; then
+          raw_tags=${raw_tags},${MANUAL_TAG}
+        fi
+
+        # Process tags, save them as a comma-separated string
         docker_tags=
-        for tag in "${tags_array[@]}"; do
+        for tag in ${raw_tags//,/ }; do
 
           # Only alphanumeric characters, . - and _ are allowed in docker image tags.
           # Replace other characters by -
           tag=$(sed "s/[^a-zA-Z0-9\.\-\_]/-/g" <<< "$tag")
+
+          # Lowercase
+          tag=${tag,,}
 
           # If this tag was already saved, do nothing
           [[ ",${docker_tags}," =~ ",${tag}," ]] && continue
 
           # Join tags with a ,
           [[ -n $docker_tags ]] && docker_tags="${docker_tags},"
-          docker_tags="${docker_tags}${tag,,}" # lowercase
+          docker_tags=${docker_tags}${tag}
         done
 
         # The 'latest' image tag is sensitive, so we want to push it only after the tests have passed.
@@ -100,6 +113,5 @@ runs:
         echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         echo "docker_tags=$docker_tags" >> $GITHUB_OUTPUT
         echo "docker_temp_tag=$docker_temp_tag" >> $GITHUB_OUTPUT
-
-        ls /crash
+        echo "debug_mode=$debug_mode" >> $GITHUB_OUTPUT
       shell: bash

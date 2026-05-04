@@ -29,7 +29,7 @@ inputs:
     description: Docker image name suffix e.g. _sub-dir-name
     required: true
   image_tags:
-    description: Docker image tags as '<wheel_version_name>,<latest|branch_name|manual_tag>' or '<temp_tag>'
+    description: Docker image tags as '<wheel_version_name>,<branch_name>[,<latest|manual_tag>]' or '<temp_tag>'
     required: true
   dockerhub_username:
     description: vars.DOCKERHUB_USERNAME
@@ -82,7 +82,9 @@ runs:
 
     # This is required to push a docker image from a private repository
     - name: Log in to registry
-      run: echo "${{ inputs.github_token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
       shell: bash
 
     - name: Set up Docker Buildx
