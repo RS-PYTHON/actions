@@ -33,7 +33,7 @@ outputs:
   docker_tags:
     description: >
       Docker tags to set to new images, either as '<wheel_version_name>,<branch_name>[,<latest|manual_tag>]'
-      or as a temporary tag 'run-<workflow_run_id>' (final tags will be set after the tests are passed).
+      or as a temporary tag 'latest-temp-aaaammdd' (final tags will be set after the tests are passed).
       All tags are in lowercase and without special characters
     value: ${{ steps.set-env.outputs.docker_tags }}
   docker_final_tags:
@@ -104,10 +104,12 @@ runs:
         done
 
         # The 'latest' image tag is sensitive, so we want to push it only after the tests have passed.
-        # In the meantime, we'll use a temporary unique docker tag = the ci/cd workflow run id.
+        # In the meantime, we'll use a temporary docker tag (final tags will be set after the tests are passed).
+        # This temp tag must be the same in different repositories in case they are inter-dependant
+        # so let's use: 'latest-temp-aaaammdd'
         if [[ (",${docker_tags}," =~ ",latest,") || ($FORCE_TEMP_TAG == true) ]]; then
           docker_final_tags=$docker_tags
-          docker_tags="run-${{github.run_id}}"
+          docker_tags="latest-temp-$(printf '%(%Y%m%d)T\n' -1)" # see: https://stackoverflow.com/a/1401495
         fi
 
         # Save values
