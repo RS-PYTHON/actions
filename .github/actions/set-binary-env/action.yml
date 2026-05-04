@@ -13,7 +13,7 @@
 # limitations under the License.
 
 name: set-binary-env
-description: Set environment for publishing binaries (wheels and Docker images)
+description: Set environment for publishing Docker images
 
 inputs:
   wheel_version_name:
