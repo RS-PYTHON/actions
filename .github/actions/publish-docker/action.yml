@@ -57,11 +57,6 @@ outputs:
   docker_images:
     description: Pushed Docker images, as a comma-separated list e.g. 'name:vx.y.z,name:latest'
     value: ${{ steps.docker_images.outputs.all_docker_images }}
-  latest_or_branch_tag:
-    description: >
-      Last pushed tag from inputs/image_tags, so it will be <latest|branch_name|manual_tag|temp_tag>
-      (without special characters and in lowercase)
-    value: ${{ steps.docker_images.outputs.latest_or_branch_tag }}
 
 runs:
   using: "composite"
@@ -116,7 +111,6 @@ runs:
         cache_image="${DOCKER_IMAGE_BASE,,}:${image_tag}-cache" # lowercase
 
         echo "latest_or_branch_image=${docker_image}" >> "$GITHUB_ENV"
-        echo "latest_or_branch_tag=${image_tag}" >> "$GITHUB_OUTPUT"
         echo "all_docker_images=${all_docker_images}" >> "$GITHUB_ENV"
         echo "all_docker_images=${all_docker_images}" >> "$GITHUB_OUTPUT"
         echo "cache_image=${cache_image}" >> "$GITHUB_ENV"
