@@ -51,7 +51,7 @@ runs:
         echo "PACKAGE_DIRECTORY=${PACKAGE_DIRECTORY}" >> $GITHUB_ENV
       shell: bash
 
-    - uses: RS-PYTHON/actions/.github/actions/setup-poetry@latest
+    - uses: RS-PYTHON/actions/.github/actions/setup-poetry@develop
 
     # Run 'poetry dynamic-versioning' from the root folder to find the version name, sed the result
     - name: Find version name
