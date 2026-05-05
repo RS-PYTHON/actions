@@ -26,30 +26,30 @@ inputs:
 runs:
   using: "composite"
   steps:
-      - id: set-env
-        env:
-          OLD_DOCKER_IMAGES: ${{ inputs.old_docker_images }}
-          NEW_TAGS: ${{ inputs.new_tags }}
-        run: |
-          set -x
+    - id: set-env
+      env:
+        OLD_DOCKER_IMAGES: ${{ inputs.old_docker_images }}
+        NEW_TAGS: ${{ inputs.new_tags }}
+      run: |
+        set -x
 
-          # Pull each pushed image in parallel
-          for old_image in ${OLD_DOCKER_IMAGES//,/ }; do
-            docker pull "$old_image" &
+        # Pull each pushed image in parallel
+        for old_image in ${OLD_DOCKER_IMAGES//,/ }; do
+          docker pull "$old_image" &
+        done
+        wait
+
+        # Add new tags and push in parallel
+        for old_image in ${OLD_DOCKER_IMAGES//,/ }; do
+          for new_tag in ${NEW_TAGS//,/ }; do
+
+            # Remove the tag from the last image, see: https://stackoverflow.com/a/19482947
+            # and add the new tag
+            new_image="${old_image%:*}:${new_tag}"
+
+            docker tag "$old_image" "$new_image"
+            docker push "$new_image" &
           done
-          wait
-
-          # Add new tags and push in parallel
-          for old_image in ${OLD_DOCKER_IMAGES//,/ }; do
-            for new_tag in ${NEW_TAGS//,/ }; do
-
-              # Remove the tag from the last image, see: https://stackoverflow.com/a/19482947
-              # and add the new tag
-              new_image="${old_image%:*}:${new_tag}"
-
-              docker tag "$old_image" "$new_image"
-              docker push "$new_image" &
-            done
-          done
-          wait
-        shell: bash
+        done
+        wait
+      shell: bash
