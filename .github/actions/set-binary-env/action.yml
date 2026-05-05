@@ -1,0 +1,120 @@
+# Copyright 2023-2026 Airbus, CS Group
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: set-binary-env
+description: Set environment for publishing Docker images
+
+inputs:
+  wheel_version_name:
+    description: Wheel version name, calculated from the git tag or commit, e.g. 'x.y' or 'x.y.postz.dev0'
+    required: false
+  manual_tag:
+    description: User-defined tag from a manual trigger
+    required: false
+  force_temp_tag:
+    description: Always use a temp docker tag ?
+    default: "false"
+
+outputs:
+  branch_name:
+    description: Current branch name (or source branch for a pull request)
+    value: ${{ steps.set-env.outputs.branch_name }}
+  docker_tags:
+    description: >
+      Docker tags to set to new images, either as '<wheel_version_name>,<branch_name>[,<latest|manual_tag>]'
+      or as a temporary tag 'latest-temp-aaaammdd' (final tags will be set after the tests are passed).
+      All tags are in lowercase and without special characters
+    value: ${{ steps.set-env.outputs.docker_tags }}
+  docker_final_tags:
+    description: >
+      Final docker tags to set after the tests are passed. Defined only if 'docker_tags' is a temporary tag.
+    value: ${{ steps.set-env.outputs.docker_final_tags }}
+  debug_mode:
+    description: Debug mode is always set to 'true' except for new tags
+    value: ${{ steps.set-env.outputs.debug_mode }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: set-env
+      env:
+        # Current branch name (or source branch for a pull request)
+        BRANCH_NAME: ${{ case(github.event_name == 'pull_request', github.event.pull_request.head.ref, github.ref_name) }}
+        WHEEL_VERSION_NAME: ${{ inputs.wheel_version_name }}
+        MANUAL_TAG: ${{ inputs.manual_tag }}
+        FORCE_TEMP_TAG: ${{ inputs.force_temp_tag }}
+      run: |
+        set -x
+
+        # Are we pushing a tag ?
+        if [[ "${{ github.ref_type }}" == tag ]]; then
+          is_tag=true
+          debug_mode=false
+        else
+          is_tag=false
+          debug_mode=true
+        fi
+
+        # Docker tags as a comma-separated string
+        raw_tags=
+
+        # First tag is the wheel version name
+        raw_tags=${raw_tags},${WHEEL_VERSION_NAME}
+
+        # Second tag is the branch name
+        raw_tags=${raw_tags},${BRANCH_NAME}
+
+        # For a tag or a push on develop, add the docker tag ':latest'
+        if [[ ($is_tag == true) || ($BRANCH_NAME == develop) ]]; then
+          raw_tags=${raw_tags},latest
+
+        # For a manual trigger, add the user-defined tag
+        elif [[ ${{ github.event_name }} == workflow_dispatch ]]; then
+          raw_tags=${raw_tags},${MANUAL_TAG}
+        fi
+
+        # Process tags, save them as a comma-separated string
+        docker_tags=
+        for tag in ${raw_tags//,/ }; do
+
+          # Only alphanumeric characters, . - and _ are allowed in docker image tags.
+          # Replace other characters by -
+          tag=$(sed "s/[^a-zA-Z0-9\.\-\_]/-/g" <<< "$tag")
+
+          # Lowercase
+          tag=${tag,,}
+
+          # If this tag was already saved, do nothing
+          [[ ",${docker_tags}," =~ ",${tag}," ]] && continue
+
+          # Join tags with a ,
+          [[ -n $docker_tags ]] && docker_tags="${docker_tags},"
+          docker_tags=${docker_tags}${tag}
+        done
+
+        # The 'latest' image tag is sensitive, so we want to push it only after the tests have passed.
+        # In the meantime, we'll use a temporary docker tag (final tags will be set after the tests are passed).
+        # This temp tag must be the same in different repositories in case they are inter-dependant
+        # so let's use: 'latest-temp-aaaammdd'
+        if [[ (",${docker_tags}," =~ ",latest,") || ($FORCE_TEMP_TAG == true) ]]; then
+          docker_final_tags=$docker_tags
+          docker_tags="latest-temp-$(printf '%(%Y%m%d)T\n' -1)" # see: https://stackoverflow.com/a/1401495
+        fi
+
+        # Save values
+        echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        echo "docker_tags=$docker_tags" >> $GITHUB_OUTPUT
+        echo "docker_final_tags=$docker_final_tags" >> $GITHUB_OUTPUT
+        echo "debug_mode=$debug_mode" >> $GITHUB_OUTPUT
+      shell: bash

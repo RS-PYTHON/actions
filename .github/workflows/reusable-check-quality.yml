@@ -36,7 +36,7 @@ on:
       poetry-version:
         description: Poetry version (when applicable)
         type: string
-        default: 2.3.2
+        required: false
       ignore-bandit-errors:
         type: boolean
         default: false
@@ -223,9 +223,10 @@ jobs:
         tool: [bandit, flake8, mypy, pylint, safety]
 
         include:
-          - if: always() && !cancelled()
+          - if: success() && !cancelled()
           - tool: bandit
             continue-on-error: ${{ inputs.ignore-bandit-errors }}
+            version: 1.9.4
             report-path: ./bandit-report.json
             commands: |
               if [[ -f pyproject.toml ]]; then
@@ -236,6 +237,7 @@ jobs:
 
           - tool: flake8
             continue-on-error: ${{ inputs.ignore-flake8-errors }}
+            version: 7.3.0
             extra-packages: Flake8-pyproject
             report-path: ./flake8-report.txt
             commands: |
@@ -244,11 +246,13 @@ jobs:
 
           - tool: mypy
             continue-on-error: ${{ inputs.ignore-mypy-errors }}
+            version: 1.20.2
             commands: |
               mypy --install-types --non-interactive --explicit-package-bases .
 
           - tool: pylint
             continue-on-error: ${{ inputs.ignore-pylint-errors }}
+            version: 4.0.5
             report-path: ./pylint-report.txt
             commands: |
               pylint "**/*.py" --output-format=colorized,parseable:./pylint-report.txt
@@ -256,6 +260,7 @@ jobs:
           - tool: safety
             if: ${{ github.actor != 'dependabot[bot]' }} # dependabot does not have access to secrets
             continue-on-error: ${{ inputs.ignore-safety-errors }}
+            version: 3.7.0
             extra-packages: typer==0.16.0
             commands: |
               safety --key $SAFETY_API_KEY scan --detailed-output
@@ -277,7 +282,7 @@ jobs:
         continue-on-error: ${{ matrix.continue-on-error }}
         run: |
           set -x
-          pip install ${{ matrix.tool }} ${{ matrix.extra-packages }}
+          pip install ${{ matrix.tool }}==${{ matrix.version }} ${{ matrix.extra-packages }}
           pip list
           ${{ matrix.commands }}
 
@@ -320,15 +325,15 @@ jobs:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
 
-      - uses: actions/setup-python@v6
+      - uses: RS-PYTHON/actions/.github/actions/setup-poetry@latest
         with:
           python-version: ${{ matrix.python-version }}
+          poetry-version: ${{ inputs.poetry-version }}
 
       - id: run
         name: Install and test ${{ matrix.tests-dir }}
         env:
           cov-dirs: ${{ inputs.cov-dirs }}
-          poetry-version: ${{ inputs.poetry-version }}
           python-version: ${{ inputs.python-version }}
         run: |
           set -x
@@ -344,9 +349,6 @@ jobs:
           if grep -q "poetry" ./pyproject.toml; then
             prefix="poetry run"
 
-            # Install poetry
-            pip install "poetry==${{ env.poetry-version }}"
-
             # Regenerate the poetry.lock file for non-standard python versions
             [[ "${{ matrix.python-version }}" != "${{ env.python-version }}" ]] && poetry lock --regenerate
 
@@ -356,16 +358,21 @@ jobs:
 
           # Else install with uv (faster than pip)
           else
+            # Remove poetry to avoid any conflicts
+            pip uninstall -y poetry || true
+
             prefix="uv run"
             rm -rf ./.venv
-            pip install uv && uv venv --python ${{ env.python-version }} && uv pip install pip
+            pip install --only-binary=:all: uv
+            uv venv --python ${{ env.python-version }}
+            uv pip install --only-binary=:all: pip
             uv pip install .
             uv pip install .[dev] || true
             # NOTE: the only use case for .[instruments] is opentelemetry-instrumentation-eopf. Maybe we should configure this.
             uv pip install .[instruments] || true
           fi
 
-          $prefix pip install pytest-error-for-skips # for pytest --error-for-skips
+          $prefix pip install --only-binary=:all: pytest-error-for-skips # for pytest --error-for-skips
           $prefix -q opentelemetry-bootstrap -a install || true # install otel instrumentation packages for dependencies
           $prefix pip list
 
@@ -427,7 +434,7 @@ jobs:
         run: |
           set -x
           ls -al
-          pip install coverage junitparser
+          pip install --only-binary=:all: coverage junitparser
 
           # Merge the .coverage files and convert to xml
           coverage combine
