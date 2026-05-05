@@ -106,14 +106,9 @@ runs:
         # Remove last ,
         all_docker_images=${all_docker_images::-1}
 
-        # Docker image used as an external cache
-        # See: https://docs.docker.com/build/cache/optimize/#use-an-external-cache
-        cache_image="${DOCKER_IMAGE_BASE,,}:${image_tag}-cache" # lowercase
-
         echo "latest_or_branch_image=${docker_image}" >> "$GITHUB_ENV"
         echo "all_docker_images=${all_docker_images}" >> "$GITHUB_ENV"
         echo "all_docker_images=${all_docker_images}" >> "$GITHUB_OUTPUT"
-        echo "cache_image=${cache_image}" >> "$GITHUB_ENV"
       shell: bash
 
     # Extract metadata from Git reference and GitHub events
@@ -124,7 +119,7 @@ runs:
         images: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }} # ghcr.io/RS-PYTHON/rs-server
 
     - name: Build Docker image
-      uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
       with:
         context: ${{ inputs.build_context_path }}
         file: ${{ inputs.dockerfile }}
@@ -134,9 +129,9 @@ runs:
         push: false # push after the security scans below
         build-args: ${{ inputs.build_args }}
         secrets: ${{ inputs.secrets }}
-        # Use cache, see: https://docs.docker.com/build/cache/optimize/#use-an-external-cache
-        cache-from: type=registry,ref=${{ env.cache_image }}
-        cache-to: type=registry,ref=${{ env.cache_image }},mode=max
+        # Use cache, see: https://docs.docker.com/build/cache/backends/gha/
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
