@@ -325,7 +325,7 @@ jobs:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
 
-      - uses: RS-PYTHON/actions/.github/actions/setup-poetry@latest
+      - uses: RS-PYTHON/actions/.github/actions/setup-poetry@develop
         with:
           python-version: ${{ matrix.python-version }}
           poetry-version: ${{ inputs.poetry-version }}
