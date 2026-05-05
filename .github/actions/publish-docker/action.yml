@@ -137,6 +137,10 @@ runs:
         # Use cache, see: https://docs.docker.com/build/cache/optimize/#use-an-external-cache
         cache-from: type=registry,ref=${{ env.cache_image }}
         cache-to: type=registry,ref=${{ env.cache_image }},mode=max
+      env:
+        # Disable build record upload as GitHub artifact because of conflicts
+        # with other actions e.g. cloudposse/github-action-matrix-outputs-read
+        DOCKER_BUILD_RECORD_UPLOAD: false
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
