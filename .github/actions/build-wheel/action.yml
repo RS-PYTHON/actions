@@ -16,7 +16,7 @@ name: build-wheel
 description: Build wheel and sdist
 
 # WARNING, needs:
-# - uses: actions/checkout@v6
+# - uses: actions/checkout
 #   with:
 #     fetch-depth: 0 # so that Dunamai produce the correct version
 

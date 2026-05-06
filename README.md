@@ -32,6 +32,10 @@ Path: `actions/.github/actions/build-wheel/action.yml`
 
 Build wheel and sdist packages from a poetry project.
 
+### *Checkout github repository and run additional commands*
+
+Path: `actions/.github/actions/checkout/action.yml`
+
 ### *Publish Docker image*
 
 Path: `actions/.github/actions/publish-docker/action.yml`

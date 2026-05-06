@@ -58,7 +58,7 @@ runs:
       with:
         python-version: ${{ steps.set-env.outputs.python-version }}
         # NOTE: remove the poetry cache because it's not so fast.
-        # Note that to make it work, you need to run actions/checkout@v6
+        # Note that to make it work, you need to run actions/checkout
         # with: ref: ${{ case(github.event_name == 'pull_request', github.head_ref, '') }}
         # Then follow https://github.com/actions/setup-python/blob/v6/docs/advanced-usage.md#caching-packages
         # cache: poetry
