@@ -75,11 +75,6 @@ on:
 
 jobs:
 
-  REMOVE-ME:
-    runs-on: ubuntu-latest
-    steps:
-      - run: set -x; echo POST_CHECKOUT_COMMANDS=$POST_CHECKOUT_COMMANDS; echo POST_CHECKOUT_COMMANDS="${{ env.POST_CHECKOUT_COMMANDS }}"
-
   params:
     runs-on: ubuntu-latest
     name: Parameters
@@ -118,7 +113,7 @@ jobs:
       py: ${{ steps.find.outputs.py }}
       tests: ${{ steps.find.outputs.tests }}
     steps:
-      - uses: RS-PYTHON/actions/.github/actions/checkout@feat-rspy1044/multiple-dask-versions
+      - uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -132,7 +127,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Check pre-commit
     steps:
-      - uses: RS-PYTHON/actions/.github/actions/checkout@feat-rspy1044/multiple-dask-versions
+      - uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -170,7 +165,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: RS-PYTHON/actions/.github/actions/checkout@feat-rspy1044/multiple-dask-versions
+      - uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -184,7 +179,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Run Trivy
     steps:
-      - uses: RS-PYTHON/actions/.github/actions/checkout@feat-rspy1044/multiple-dask-versions
+      - uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -272,7 +267,7 @@ jobs:
 
     steps:
       - if: ${{ matrix.if }}
-        uses: RS-PYTHON/actions/.github/actions/checkout@feat-rspy1044/multiple-dask-versions
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -325,7 +320,7 @@ jobs:
     continue-on-error: ${{ matrix.experimental }}
 
     steps:
-      - uses: RS-PYTHON/actions/.github/actions/checkout@feat-rspy1044/multiple-dask-versions
+      - uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -424,7 +419,7 @@ jobs:
     name: Merge Pytest reports
     needs: [params, find-paths, run-all-pytests]
     steps:
-      - uses: RS-PYTHON/actions/.github/actions/checkout@feat-rspy1044/multiple-dask-versions
+      - uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -476,7 +471,7 @@ jobs:
       SONAR_HOST_URL: https://sonarcloud.io
     steps:
       - name: Checkout repository
-        uses: RS-PYTHON/actions/.github/actions/checkout@feat-rspy1044/multiple-dask-versions
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
