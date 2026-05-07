@@ -66,6 +66,10 @@ on:
                      at all in SonarQube."
         type: string
         default: tests,tests/**,**/tests/**
+      artifact-prefix:
+        description: Prefix to give to all artifacts uploaded by this workflow
+        type: string
+        required: false
 
     secrets:
       SAFETY_API_KEY:
@@ -290,7 +294,7 @@ jobs:
         if: ${{ !cancelled() && matrix.report-path }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.params.outputs.repo-name }}-${{ matrix.tool }}.report
+          name: ${{ inputs.artifact-prefix}}${{ needs.params.outputs.repo-name }}-${{ matrix.tool }}.report
           path: ${{ matrix.report-path }}
           retention-days: 1
 
@@ -407,7 +411,7 @@ jobs:
         if: always() && !cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.params.outputs.repo-name }}-pytest.${{ matrix.python-version}}.${{ steps.run.outputs.dash_dir }}
+          name: ${{ inputs.artifact-prefix}}${{ needs.params.outputs.repo-name }}-pytest.${{ matrix.python-version}}.${{ steps.run.outputs.dash_dir }}
           include-hidden-files: true
           path: |
             .coverage.*
@@ -427,7 +431,7 @@ jobs:
       - name: Download pytest coverage reports
         uses: actions/download-artifact@v8
         with:
-          pattern: ${{ needs.params.outputs.repo-name }}-pytest.${{ inputs.python-version}}.*
+          pattern: ${{ inputs.artifact-prefix}}${{ needs.params.outputs.repo-name }}-pytest.${{ inputs.python-version}}.*
           merge-multiple: true
 
       - name: Merge reports
@@ -447,7 +451,7 @@ jobs:
       - name: Save merged reports as artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.params.outputs.repo-name }}-pytest.report
+          name: ${{ inputs.artifact-prefix}}${{ needs.params.outputs.repo-name }}-pytest.report
           path: |
             cov-report.xml
             junit-xml-report.xml
@@ -480,7 +484,7 @@ jobs:
       - name: Download python and pytest reports
         uses: actions/download-artifact@v8
         with:
-          pattern: ${{ needs.params.outputs.repo-name }}-*.report
+          pattern: ${{ inputs.artifact-prefix}}${{ needs.params.outputs.repo-name }}-*.report
           merge-multiple: true
 
       - name: Init SonarQube environment
