@@ -47,7 +47,7 @@ runs:
         elif [[ -n $INPUT_POETRY_VERSION ]]; then
           poetry_version=$INPUT_POETRY_VERSION
         else
-          poetry_version=2.3.2
+          poetry_version=2.3.3
         fi
 
         echo python-version=$python_version >> "$GITHUB_OUTPUT"
