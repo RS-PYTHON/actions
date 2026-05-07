@@ -66,10 +66,6 @@ on:
                      at all in SonarQube."
         type: string
         default: tests,tests/**,**/tests/**
-      post-checkout-commands:
-        description: Commands to be run after the checkout of the git repository
-        type: string
-        required: false
 
     secrets:
       SAFETY_API_KEY:
@@ -121,10 +117,6 @@ jobs:
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
-      - name: Post-checkout commands
-        env:
-          CMD: ${{ inputs.post-checkout-commands }}
-        run: set -x; $CMD
       - id: find
         run: |
           set -x
