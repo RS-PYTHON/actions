@@ -140,13 +140,15 @@ jobs:
         run: |
           set -x
           if grep terraform ./.pre-commit-config.yaml; then
-            echo install="terraform-linters/tap/tflint" >> $GITHUB_OUTPUT
+            echo tap=hashicorp/tap >> $GITHUB_OUTPUT
+            echo install="hashicorp/tap/terraform terraform-linters/tap/tflint" >> $GITHUB_OUTPUT
           fi
       - if: ${{ steps.check-brew.outputs.install }}
         uses: Homebrew/actions/setup-homebrew@675fcd27b59e54d310c5484c8c27c01d03da660c
       - if: ${{ steps.check-brew.outputs.install }}
         run: |
           set -x
+          brew tap ${{ steps.check-brew.outputs.tap }}
           brew install ${{ steps.check-brew.outputs.install }}
 
       - run: >
