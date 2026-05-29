@@ -106,10 +106,10 @@ runs:
         # The 'latest' image tag is sensitive, so we want to push it only after the tests have passed.
         # In the meantime, we'll use a temporary docker tag (final tags will be set after the tests are passed).
         # This temp tag must be the same in different repositories in case they are inter-dependant
-        # so let's use: 'latest-temp-aaaammdd'
+        # so let's use: 'latest-temp-cicd'
         if [[ (",${docker_tags}," =~ ",latest,") || ($FORCE_TEMP_TAG == true) ]]; then
           docker_final_tags=$docker_tags
-          docker_tags="latest-temp-$(printf '%(%Y%m%d)T\n' -1)" # see: https://stackoverflow.com/a/1401495
+          docker_tags=latest-temp-cicd
         fi
 
         # Save values
