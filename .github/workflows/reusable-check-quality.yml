@@ -314,19 +314,19 @@ jobs:
       matrix:
         tests-dir: ${{ fromJson(needs.find-paths.outputs.tests) }}
         # only main python version
-        python-version: ["${{ inputs.python-version }}" ]
-        include:
-          - experimental: false
-        # test several python versions
-        # python-version: ["${{ inputs.python-version }}", 3.13t, 3.14, 3.15.0a2 ]
+        # python-version: ["${{ inputs.python-version }}" ]
         # include:
         #   - experimental: false
-        #   - python-version: 3.13t # free-threaded mode, with the global interpreter lock (GIL) disabled
-        #     experimental: true
-        #   - python-version: 3.14
-        #     experimental: true
-        #   - python-version: 3.15.0a2
-        #     experimental: true
+        # test several python versions
+        python-version: ["${{ inputs.python-version }}", 3.13t, 3.14, 3.15.0-beta.1 ]
+        include:
+          - experimental: false
+          - python-version: 3.13t # free-threaded mode, with the global interpreter lock (GIL) disabled
+            experimental: true
+          - python-version: 3.14
+            experimental: true
+          - python-version: 3.15.0-beta.1
+            experimental: true
     continue-on-error: ${{ matrix.experimental }}
 
     steps:

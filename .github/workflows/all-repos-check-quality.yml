@@ -35,7 +35,7 @@ env:
     __LAST__
 
   # For testing: only call these repos (except the ignored ones) (separated by spaces) (should be empty to test all repos)
-  ONLY_REPOS: ""
+  ONLY_REPOS: "rs-server"
   # ONLY_REPOS: "e.g. repo1 repo2" # if you change this for testing, don't commit it
 
 jobs:
@@ -127,7 +127,7 @@ jobs:
 
           # Default option values, copied from reusable-check-quality.yml
           - python-version: 3.13.12
-          - poetry-version: 2.3.2
+          - poetry-version: 2.4.1
           - ignore-bandit-errors: false
           - ignore-flake8-errors: false
           - ignore-mypy-errors: false
