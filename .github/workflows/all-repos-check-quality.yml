@@ -127,7 +127,7 @@ jobs:
 
           # Default option values, copied from reusable-check-quality.yml
           - python-version: 3.13.12
-          - poetry-version: 2.3.2
+          - poetry-version: 2.4.1
           - ignore-bandit-errors: false
           - ignore-flake8-errors: false
           - ignore-mypy-errors: false
