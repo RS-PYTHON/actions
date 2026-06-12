@@ -153,6 +153,7 @@ jobs:
         run: |
           set -x
           brew tap ${{ steps.check-brew.outputs.tap }}
+          brew trust ${{ steps.check-brew.outputs.tap }}
           brew install ${{ steps.check-brew.outputs.install }}
 
       - run: >
