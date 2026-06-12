@@ -144,17 +144,16 @@ jobs:
         run: |
           set -x
           if grep terraform ./.pre-commit-config.yaml; then
-            echo tap=hashicorp/tap >> $GITHUB_OUTPUT
-            echo install="hashicorp/tap/terraform terraform-linters/tap/tflint" >> $GITHUB_OUTPUT
+            echo install="terraform-linters/tap/tflint" >> $GITHUB_OUTPUT
           fi
+      - if: ${{ steps.check-brew.outputs.install }}
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e #v4.0.1
       - if: ${{ steps.check-brew.outputs.install }}
         uses: Homebrew/actions/setup-homebrew@675fcd27b59e54d310c5484c8c27c01d03da660c
       - if: ${{ steps.check-brew.outputs.install }}
         run: |
           set -x
-          brew trust ${{ steps.check-brew.outputs.tap }}
           brew install -y ${{ steps.check-brew.outputs.install }}
-
       - run: >
           echo
           ":information_source: This job checks that you have run \`pre-commit run --all-files\` in
