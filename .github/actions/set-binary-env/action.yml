@@ -49,7 +49,7 @@ runs:
   steps:
     - id: set-env
       env:
-        # Current branch name (or source branch for a pull request)
+        # Current branch name (or source branch for a pull request) or git tag (if we are pushing a git tag)
         BRANCH_NAME: ${{ case(github.event_name == 'pull_request', github.event.pull_request.head.ref, github.ref_name) }}
         WHEEL_VERSION_NAME: ${{ inputs.wheel_version_name }}
         MANUAL_TAG: ${{ inputs.manual_tag }}
@@ -57,36 +57,39 @@ runs:
       run: |
         set -x
 
-        # Are we pushing a tag ?
+        # Are we pushing a git tag ?
         if [[ "${{ github.ref_type }}" == tag ]]; then
-          is_tag=true
+          is_git_tag=true
           debug_mode=false
         else
-          is_tag=false
+          is_git_tag=false
           debug_mode=true
         fi
 
         # Docker tags as a comma-separated string
-        raw_tags=
+        raw_docker_tags=
 
-        # First tag is the wheel version name
-        raw_tags=${raw_tags},${WHEEL_VERSION_NAME}
+        # First docker tag is the branch name or git tag
+        raw_docker_tags=${raw_docker_tags},${BRANCH_NAME}
 
-        # Second tag is the branch name
-        raw_tags=${raw_tags},${BRANCH_NAME}
+        # Second docker tag is the wheel version name.
+        # We need it only when we are pushing a git tag as vx.y.z: in this case the wheel
+        # version name will be x.y.z. The is the docker tag that will be deployed in the infrastructure.
+        if [[ $is_git_tag == true ]]; then
+          raw_docker_tags=${raw_docker_tags},${WHEEL_VERSION_NAME}
 
-        # For a tag or a push on develop, add the docker tag ':latest'
-        if [[ ($is_tag == true) || ($BRANCH_NAME == develop) ]]; then
-          raw_tags=${raw_tags},latest
+        # For a push on develop, add the docker tag ':latest' (don't add it when pushing a git tag).
+        elif [[ $BRANCH_NAME == develop ]]; then
+          raw_docker_tags=${raw_docker_tags},latest
 
         # For a manual trigger, add the user-defined tag
         elif [[ ${{ github.event_name }} == workflow_dispatch ]]; then
-          raw_tags=${raw_tags},${MANUAL_TAG}
+          raw_docker_tags=${raw_docker_tags},${MANUAL_TAG}
         fi
 
-        # Process tags, save them as a comma-separated string
+        # Process docker tags, save them as a comma-separated string
         docker_tags=
-        for tag in ${raw_tags//,/ }; do
+        for tag in ${raw_docker_tags//,/ }; do
 
           # Only alphanumeric characters, . - and _ are allowed in docker image tags.
           # Replace other characters by -
