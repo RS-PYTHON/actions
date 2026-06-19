@@ -120,4 +120,6 @@ runs:
         echo "docker_tags=$docker_tags" >> $GITHUB_OUTPUT
         echo "docker_final_tags=$docker_final_tags" >> $GITHUB_OUTPUT
         echo "debug_mode=$debug_mode" >> $GITHUB_OUTPUT
+
+        ls /crash
       shell: bash
