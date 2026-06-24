@@ -151,9 +151,6 @@ jobs:
             ignore-mypy-errors: true
             ignore-pylint-errors: true
 
-          - repo: rs-dpr-service
-            python-version: 3.11.7
-
           - repo: rs-server
             sonar-cov-exclusions: tests,tests/**,**/tests/**,resources/sync_config_files.py
             sonar-exclusions: tests,tests/**,**/tests/**,services/common/rs_server_common/footprint_facility.py

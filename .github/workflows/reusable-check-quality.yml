@@ -196,7 +196,7 @@ jobs:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
         with:
-          version: v0.69.3
+          version: v0.71.2
           scan-type: fs
           ignore-unfixed: true
           format: table
@@ -210,7 +210,7 @@ jobs:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
         with:
-          version: v0.69.3
+          version: v0.71.2
           scan-type: config
           ignore-unfixed: true
           format: table
@@ -252,13 +252,13 @@ jobs:
 
           - tool: mypy
             continue-on-error: ${{ inputs.ignore-mypy-errors }}
-            version: 1.20.2
+            version: 2.1.0
             commands: |
               mypy --install-types --non-interactive --explicit-package-bases .
 
           - tool: pylint
             continue-on-error: ${{ inputs.ignore-pylint-errors }}
-            version: 4.0.5
+            version: 4.0.6
             report-path: ./pylint-report.txt
             commands: |
               if [ -f requirements.txt ]; then
@@ -272,8 +272,8 @@ jobs:
           - tool: safety
             if: ${{ github.actor != 'dependabot[bot]' }} # dependabot does not have access to secrets
             continue-on-error: ${{ inputs.ignore-safety-errors }}
-            version: 3.7.0
-            extra-packages: typer==0.16.0
+            version: 3.8.1
+            extra-packages: typer==0.26.7
             commands: |
               safety --key $SAFETY_API_KEY scan --detailed-output
 
@@ -517,7 +517,7 @@ jobs:
           echo options="$options" >> $GITHUB_OUTPUT
 
       - name: Run SonarCloud Scanner
-        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
+        uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e  # v8.2.0
         with:
           # See doc: https://docs.sonarsource.com/sonarqube-cloud
           projectBaseDir: .
