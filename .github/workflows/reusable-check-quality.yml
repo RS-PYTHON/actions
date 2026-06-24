@@ -273,7 +273,7 @@ jobs:
             if: ${{ github.actor != 'dependabot[bot]' }} # dependabot does not have access to secrets
             continue-on-error: ${{ inputs.ignore-safety-errors }}
             version: 3.8.1
-            extra-packages: typer==0.26.7
+            extra-packages: typer==0.25.1
             commands: |
               safety --key $SAFETY_API_KEY scan --detailed-output
 
