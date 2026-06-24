@@ -81,13 +81,13 @@ runs:
       shell: bash
 
     - name: Save wheel package as artifact
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ steps.package_name.outputs.package_name }}
         path: ${{ env.PACKAGE_DIRECTORY }}/dist/${{ steps.package_name.outputs.package_name }}
 
     - name: Save sdist as artifact
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ steps.sdist_name.outputs.sdist_name }}
         path: ${{ env.PACKAGE_DIRECTORY }}/dist/${{ steps.sdist_name.outputs.sdist_name }}
