@@ -33,7 +33,7 @@ outputs:
   docker_tags:
     description: >
       Docker tags to set to new images, either as '<wheel_version_name>,<branch_name>[,<latest|manual_tag>]'
-      or as a temporary tag 'latest-temp-aaaammdd' (final tags will be set after the tests are passed).
+      or as a temporary tag 'latest-temp-cicd' (final tags will be set after the tests are passed).
       All tags are in lowercase and without special characters
     value: ${{ steps.set-env.outputs.docker_tags }}
   docker_final_tags:
