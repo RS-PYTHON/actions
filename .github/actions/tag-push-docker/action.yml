@@ -48,7 +48,7 @@ runs:
             new_image="${old_image%:*}:${new_tag}"
 
             docker tag "$old_image" "$new_image"
-            docker push "$new_image" &
+            docker push "$new_image" # no background process with '&' because we want to propagate errors
           done
         done
         wait
