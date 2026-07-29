@@ -29,7 +29,7 @@ inputs:
     description: Docker image name suffix e.g. _sub-dir-name
     required: true
   image_tags:
-    description: Docker image tags as '<wheel_version_name>,<branch_name>[,<latest|manual_tag>]' or '<temp_tag>'
+    description: Docker image tags as '<branch_name>,<git_tag|latest|add_docker_tags>' or '<temp_tag>'
     required: true
   dockerhub_username:
     description: vars.DOCKERHUB_USERNAME
