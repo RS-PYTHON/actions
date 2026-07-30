@@ -20,7 +20,7 @@ inputs:
     description: secrets.TRIGGER_WORKFLOWS
     required: true
   owner_repo:
-    description: The account owner and name (without the .git extension) of the repository, as 'owner/repo'
+    description: The account owner and name (without the .git extension) of the repository, as 'repository-owner/repository-name'
     required: true
   workflow_path:
     description: Relative path of the workflow file e.g. '.github/workflows/my-workflow.yml'
@@ -29,7 +29,7 @@ inputs:
     description: Filter on workflow runs associated with this branch. Use the name of the branch of the push.
     required: false
   status:
-    description: Filter on workflow runs with this check run status or conclusion, as status1,status2
+    description: Filter on workflow runs with this check run status or conclusion, as 'status1,status2'
     default: in_progress,queued
 
 runs:
@@ -44,7 +44,6 @@ runs:
         ALL_STATUS: ${{ inputs.status }}
       run: |
         set -x
-
         for this_status in ${ALL_STATUS//,/ }; do
 
           # Get workflow runs.

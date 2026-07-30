@@ -58,7 +58,7 @@ runs:
   steps:
     - id: set-env
       env:
-        # Current branch name (or source branch for a pull request) or git tag (if we are pushing a git tag)
+        # Current branch name (or source branch for a pull request) or git tag without 'v' (if we are pushing a git tag)
         BRANCH_NAME: ${{ case(github.event_name == 'pull_request', github.event.pull_request.head.ref, github.ref_name) }}
         WHEEL_VERSION_NAME: ${{ inputs.wheel_version_name }}
         ADD_DOCKER_TAGS: ${{ inputs.add_docker_tags }}

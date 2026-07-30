@@ -17,10 +17,10 @@ description: From a git repository, return the first branch that exists from a l
 
 inputs:
   repo:
-    description: repository-owner/repository-name
+    description: The account owner and name (without the .git extension) of the repository, as 'repository-owner/repository-name'
     required: true
   branches:
-    description: Branch names to test as branch1,branch2,branch3
+    description: Branch names to test as 'branch1,branch2,branch3'
     required: true
 
 outputs:
