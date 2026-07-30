@@ -29,7 +29,7 @@ inputs:
     description: Docker image name suffix e.g. _sub-dir-name
     required: true
   image_tags:
-    description: Docker image tags as '<wheel_version_name>,<branch_name>[,<latest|manual_tag>]' or '<temp_tag>'
+    description: Docker image tags as '<branch_name>,<git_tag|latest|add_docker_tags>' or '<temp_tag>'
     required: true
   dockerhub_username:
     description: vars.DOCKERHUB_USERNAME
@@ -52,6 +52,9 @@ inputs:
   trivy_skip_files:
     description: Comma separated list of files skipped to be skipped by Trivy
     required: false
+  aggressive_cleanup_level:
+    description: Level between 0 and 15, more cleaning takes more time
+    default: 7
 
 outputs:
   docker_images:
@@ -61,6 +64,16 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Aggressive cleanup
+      env:
+        LEVEL: ${{ inputs.aggressive_cleanup_level }}
+      run: |
+        # Cleanup disk space (level between 0 and 15, more cleaning takes more time)
+        wget --max-redirect=0 \
+          https://raw.githubusercontent.com/RS-PYTHON/rs-infra-core/refs/heads/develop/.github/common/resources/aggressive-cleanup.sh
+        chmod u+x aggressive-cleanup.sh
+        ./aggressive-cleanup.sh ${{ env.LEVEL }}
+      shell: bash
 
     # Login to Docker Hub to increase pull quota from 100 to 200 per 6 hours
     - name: Log in to Docker Hub

@@ -23,14 +23,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Check quality of this current project by calling the reusable quality check from this same project.
+  # Call the reusable workflow from this same project
   call-reusable-workflow:
     name: _
     uses: ./.github/workflows/reusable-check-quality.yml
     with:
-        caller-repository: ${{ github.repository }}
-        caller-ref: ${{ github.ref }}
-        caller-ref_name: ${{ github.ref_name }}
+      caller-repository: ${{ github.repository }}
+      caller-ref: ${{ github.ref }}
+      caller-ref_name: ${{ github.ref_name }}
     secrets:
       SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

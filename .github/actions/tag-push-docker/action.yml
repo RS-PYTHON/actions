@@ -16,6 +16,9 @@ name: tag-push-docker
 description: Tag and push Docker images
 
 inputs:
+  github_token:
+    description: "secrets.GITHUB_TOKEN (required if you have a 'unauthorized: unauthenticated: User cannot be authenticated with the token provided.')"
+    required: false
   old_docker_images:
     description: Old Docker images to retag, as a comma-separated list e.g. 'image1:old-tag,image2:old-tag'
     required: true
@@ -26,7 +29,24 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - id: set-env
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
+      if: ${{ inputs.github_token != '' }}
+      with:
+        registry: ${{ env.DOCKER_REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    # This is required to push a docker image from a private repository
+    - name: Log in to registry
+      if: ${{ inputs.github_token != '' }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      shell: bash
+
+    - name: Tag and push Docker images
       env:
         OLD_DOCKER_IMAGES: ${{ inputs.old_docker_images }}
         NEW_TAGS: ${{ inputs.new_tags }}
@@ -48,7 +68,7 @@ runs:
             new_image="${old_image%:*}:${new_tag}"
 
             docker tag "$old_image" "$new_image"
-            docker push "$new_image" &
+            docker push "$new_image" # no background process with '&' because we want to propagate errors
           done
         done
         wait

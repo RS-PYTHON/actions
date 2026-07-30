@@ -17,14 +17,23 @@ description: Set environment for publishing Docker images
 
 inputs:
   wheel_version_name:
-    description: Wheel version name, calculated from the git tag or commit, e.g. 'x.y' or 'x.y.postz.dev0'
+    description: >
+      Wheel version name, calculated from the git tag or commit, e.g. 'x.y' or 'x.y.postz.dev0'.
+      Actually we use it only for git tags.
+      WARNING: if the git tag is 'vx.y', the wheel version name will be 'x.y' (without the leading 'v').
     required: false
-  manual_tag:
-    description: User-defined tag from a manual trigger
+  add_docker_tags:
+    description: Add these docker tags, set by a user from a manual trigger
     required: false
   force_temp_tag:
-    description: Always use a temp docker tag ?
-    default: "false"
+    description: Always use a temp docker tag ? Mainly used for testing purposes.
+    default: false
+  force_docker_tags:
+    description: If set, discard all the rest and just return these docker tags.
+    required: false
+  force_docker_final_tags:
+    description: If set, discard all the rest and just return these final docker tags.
+    required: false
 
 outputs:
   branch_name:
@@ -32,8 +41,8 @@ outputs:
     value: ${{ steps.set-env.outputs.branch_name }}
   docker_tags:
     description: >
-      Docker tags to set to new images, either as '<wheel_version_name>,<branch_name>[,<latest|manual_tag>]'
-      or as a temporary tag 'latest-temp-aaaammdd' (final tags will be set after the tests are passed).
+      Docker tags to set to new images, either as '<branch_name>,<git_tag|latest|add_docker_tags>'
+      or as a temporary tag 'latest-temp-cicd' (final tags will be set after the tests are passed).
       All tags are in lowercase and without special characters
     value: ${{ steps.set-env.outputs.docker_tags }}
   docker_final_tags:
@@ -49,11 +58,13 @@ runs:
   steps:
     - id: set-env
       env:
-        # Current branch name (or source branch for a pull request) or git tag (if we are pushing a git tag)
+        # Current branch name (or source branch for a pull request) or git tag without 'v' (if we are pushing a git tag)
         BRANCH_NAME: ${{ case(github.event_name == 'pull_request', github.event.pull_request.head.ref, github.ref_name) }}
         WHEEL_VERSION_NAME: ${{ inputs.wheel_version_name }}
-        MANUAL_TAG: ${{ inputs.manual_tag }}
+        ADD_DOCKER_TAGS: ${{ inputs.add_docker_tags }}
         FORCE_TEMP_TAG: ${{ inputs.force_temp_tag }}
+        FORCE_DOCKER_TAGS: ${{ inputs.force_docker_tags }}
+        FORCE_DOCKER_FINAL_TAGS: ${{ inputs.force_docker_final_tags }}
       run: |
         set -x
 
@@ -73,7 +84,7 @@ runs:
         raw_docker_tags=${raw_docker_tags},${BRANCH_NAME}
 
         # Second docker tag is the wheel version name.
-        # We need it only when we are pushing a git tag as vx.y.z: in this case the wheel
+        # We add it only when we are pushing a git tag as vx.y.z: in this case the wheel
         # version name will be x.y.z. The is the docker tag that will be deployed in the infrastructure.
         if [[ $is_git_tag == true ]]; then
           raw_docker_tags=${raw_docker_tags},${WHEEL_VERSION_NAME}
@@ -84,7 +95,7 @@ runs:
 
         # For a manual trigger, add the user-defined tag
         elif [[ ${{ github.event_name }} == workflow_dispatch ]]; then
-          raw_docker_tags=${raw_docker_tags},${MANUAL_TAG}
+          raw_docker_tags=${raw_docker_tags},${ADD_DOCKER_TAGS}
         fi
 
         # Process docker tags, save them as a comma-separated string
@@ -114,6 +125,10 @@ runs:
           docker_final_tags=$docker_tags
           docker_tags=latest-temp-cicd
         fi
+
+        # If set, discard all the rest and just return these docker tags.
+        [[ -n $FORCE_DOCKER_TAGS ]] && docker_tags=$FORCE_DOCKER_TAGS
+        [[ -n $FORCE_DOCKER_FINAL_TAGS ]] && docker_final_tags=$FORCE_DOCKER_FINAL_TAGS
 
         # Save values
         echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT

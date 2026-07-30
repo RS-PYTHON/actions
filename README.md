@@ -28,28 +28,40 @@ See: https://docs.github.com/en/actions/tutorials/create-actions/create-a-compos
 
 ### *Build wheel and sdist*
 
-Path: `actions/.github/actions/build-wheel/action.yml`
+Path: `.github/actions/build-wheel/action.yml`
 
 Build wheel and sdist packages from a poetry project.
 
+### *Cancel workflow runs*
+
+Path: `.github/actions/cancel-workflow-runs/action.yml`
+
+Cancel github workflow runs from any repository. Used to avoid duplicate runs on the same workflow.
+
+### *Get repository branch*
+
+Path: `.github/actions/get-repo-branch/action.yml`
+
+From a git repository, return the first branch that exists from a list, e.g. 'does-not-exist,develop' will return 'develop'.
+
 ### *Publish Docker image*
 
-Path: `actions/.github/actions/publish-docker/action.yml`
+Path: `.github/actions/publish-docker/action.yml`
 
 Build and push a Docker image, and pass Trivy on it.
 
 ### *Set environment for publishing Docker images*
 
-Path: `actions/.github/actions/set-binary-env/action.yml`
+Path: `.github/actions/set-binary-env/action.yml`
 
 Set variables depending on the git context: branch name, docker tags and debug mode.
 
 ### *Install Python and Poetry*
 
-Path: `actions/.github/actions/setup-poetry/action.yml`
+Path: `.github/actions/setup-poetry/action.yml`
 
 ### *Tag and push Docker images*
 
-Path: `actions/.github/actions/tag-push-docker/action.yml`
+Path: `.github/actions/tag-push-docker/action.yml`
 
 This is used to retag and push temporary Docker images with final tags, after the tests have passed.

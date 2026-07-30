@@ -1,0 +1,88 @@
+# Copyright 2023-2026 Airbus, CS Group
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: cancel-workflow-runs
+description: Cancel workflow runs
+
+inputs:
+  trigger_workflows_token:
+    description: secrets.TRIGGER_WORKFLOWS
+    required: true
+  owner_repo:
+    description: The account owner and name (without the .git extension) of the repository, as 'repository-owner/repository-name'
+    required: true
+  workflow_path:
+    description: Relative path of the workflow file e.g. '.github/workflows/my-workflow.yml'
+    required: false
+  branch:
+    description: Filter on workflow runs associated with this branch. Use the name of the branch of the push.
+    required: false
+  status:
+    description: Filter on workflow runs with this check run status or conclusion, as 'status1,status2'
+    default: in_progress,queued
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cancel workflow runs
+      env:
+        TRIGGER_WORKFLOWS_TOKEN: ${{ inputs.trigger_workflows_token }}
+        OWNER_REPO: ${{ inputs.owner_repo }}
+        WORKFLOW_PATH: ${{ inputs.workflow_path }}
+        BRANCH: ${{ inputs.branch }}
+        ALL_STATUS: ${{ inputs.status }}
+      run: |
+        set -x
+        for this_status in ${ALL_STATUS//,/ }; do
+
+          # Get workflow runs.
+          # https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2026-03-10#list-workflow-runs-for-a-repository
+          params=
+          [[ -n $BRANCH ]] && params="${params}&branch=${BRANCH}"
+          [[ -n $this_status ]] && params="${params}&status=${this_status}"
+          response=$(\
+            curl --proto "=https" -L \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${TRIGGER_WORKFLOWS_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "https://api.github.com/repos/${OWNER_REPO}/actions/runs?${params}")
+
+          # Filter on path
+          if [[ -n $WORKFLOW_PATH ]]; then
+            run_ids=$(jq -r --arg _path "$WORKFLOW_PATH" '.workflow_runs[] | select(.path == $_path) | .id' <<< "$response")
+          else
+            run_ids=$(jq -r .workflow_runs[].id <<< "$response")
+          fi
+
+          echo -e "Cancel '$this_status' run id(s) from '$OWNER_REPO' branch '$BRANCH':\n${run_ids:-(none)}"
+          for run_id in $run_ids; do
+
+            echo "Cancelling 'https://github.com/${OWNER_REPO}/actions/runs/${run_id}' ..."
+
+            # https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2026-03-10#cancel-a-workflow-run
+            response=$(curl --proto "=https" -L \
+              -X POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${TRIGGER_WORKFLOWS_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "https://api.github.com/repos/${OWNER_REPO}/actions/runs/${run_id}/cancel")
+
+            # The response status should be null or 200
+            rs=$(jq -r .status <<< "$response")
+            if [[ ($rs != null) && ($rs != 200) ]]; then
+              jq <<< "$response"
+            fi
+          done
+        done
+      shell: bash
