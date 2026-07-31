@@ -38,6 +38,12 @@ Path: `.github/actions/cancel-workflow-runs/action.yml`
 
 Cancel github workflow runs from any repository. Used to avoid duplicate runs on the same workflow.
 
+### *Get image tag*
+
+Path: `.github/actions/get-image-tag/action.yml`
+
+Return the first docker image tag that exists from a list, e.g. 'does-not-exist,latest' will return 'latest'.
+
 ### *Get repository branch*
 
 Path: `.github/actions/get-repo-branch/action.yml`
