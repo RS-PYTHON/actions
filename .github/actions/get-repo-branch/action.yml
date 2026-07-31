@@ -13,7 +13,7 @@
 # limitations under the License.
 
 name: get-repo-branch
-description: From a git repository, return the first branch that exists from a list
+description: From a git repository, return the first branch that exists from a list, e.g. 'does-not-exist,develop' will return 'develop'.
 
 inputs:
   repo:
