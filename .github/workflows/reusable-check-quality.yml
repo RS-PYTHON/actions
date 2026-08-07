@@ -117,7 +117,7 @@ jobs:
       py: ${{ steps.find.outputs.py }}
       tests: ${{ steps.find.outputs.tests }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -131,7 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Check pre-commit
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -171,7 +171,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -185,7 +185,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Run Trivy
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -279,7 +279,7 @@ jobs:
 
     steps:
       - if: ${{ matrix.if }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -332,7 +332,7 @@ jobs:
     continue-on-error: ${{ matrix.experimental }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -431,7 +431,7 @@ jobs:
     name: Merge Pytest reports
     needs: [params, find-paths, run-all-pytests]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
@@ -483,7 +483,7 @@ jobs:
       SONAR_HOST_URL: https://sonarcloud.io
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
