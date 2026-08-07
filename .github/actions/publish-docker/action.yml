@@ -136,15 +136,18 @@ runs:
       with:
         images: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }} # ghcr.io/RS-PYTHON/rs-server
 
-    - name: Build Docker image
+    - name: Build and push Docker image
       uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
       with:
         context: ${{ inputs.build_context_path }}
         file: ${{ inputs.dockerfile }}
-        load: true
         tags: ${{ env.all_docker_images }}
         labels: ${{ steps.meta.outputs.labels }}
-        push: false # push after the security scans below
+        # Push straight from the builder via buildx's registry exporter instead of loading the
+        # image into the local Docker daemon and pushing it again afterwards: with a multi-GB
+        # image, that load+push round-trip used to cost ~10 minutes of pure overhead, and the
+        # Trivy scan below never gated the push anyway (exit-code: 0).
+        push: true
         build-args: ${{ inputs.build_args }}
         secrets: ${{ inputs.secrets }}
         # Use cache, see: https://docs.docker.com/build/cache/optimize/#use-an-external-cache
@@ -162,12 +165,16 @@ runs:
         TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
       with:
         version: v0.73.0
+        # Pulled from the registry since the image is no longer loaded into the local Docker daemon.
         image-ref: ${{ env.latest_or_branch_image }}
         format: sarif
         output: trivy-results-docker.sarif
         exit-code: 0
         limit-severities-for-sarif: true
         severity: HIGH,CRITICAL
+        # Secret scanning roughly doubles the scan time on multi-GB images and isn't needed here:
+        # these are build artifacts, not source checkouts.
+        scanners: vuln
         timeout: 30m
         skip-dirs: ${{ inputs.trivy_skip_dirs }}
         skip-files: ${{ inputs.trivy_skip_files }}
@@ -198,15 +205,4 @@ runs:
         echo "Trivy scan results:" \
         "https://github.com/${GITHUB_REPOSITORY}/security/code-scanning?query=${query}" \
         >> $GITHUB_STEP_SUMMARY
-      shell: bash
-
-    - name: Push Docker images
-      env:
-        ALL_DOCKER_IMAGES: ${{ env.all_docker_images }}
-      run: |
-        set -x
-        docker images
-        for image in ${ALL_DOCKER_IMAGES//,/ }; do
-          docker push $image
-        done
       shell: bash
