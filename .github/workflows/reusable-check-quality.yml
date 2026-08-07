@@ -150,7 +150,7 @@ jobs:
       - if: ${{ steps.check-brew.outputs.install }}
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e #v4.0.1
       - if: ${{ steps.check-brew.outputs.install }}
-        uses: Homebrew/actions/setup-homebrew@675fcd27b59e54d310c5484c8c27c01d03da660c
+        uses: Homebrew/actions/setup-homebrew@c8707045ccae42888fe98e86f2ee8938bc7cc193
       - if: ${{ steps.check-brew.outputs.install }}
         run: |
           set -x
