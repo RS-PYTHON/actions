@@ -176,7 +176,7 @@ jobs:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
       - name: Check License Header
-        uses: apache/skywalking-eyes/header@8c96ee223558797cdd9eba82c0919258e1cf2dad
+        uses: apache/skywalking-eyes/header@315732dd4b8d3a015d8d9b91936b935a0b854817
         with:
           log: debug
           mode: check
