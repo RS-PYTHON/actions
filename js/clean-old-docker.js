@@ -24,6 +24,8 @@ const package_type = "container"
 const yesterday = new Date()
 yesterday.setDate(yesterday.getDate() - 1)
 
+const octokit = new Octokit({ auth: githubPat});
+
 ///////////////////////
 // Utility functions //
 ///////////////////////
@@ -42,11 +44,11 @@ function removeSpecial(str) {
     return str.replace(/[^a-zA-Z0-9\.\-\_]/g, "-")
 }
 
+/*
+
 ////////////////////
 // Main functions //
 ////////////////////
-
-const octokit = new Octokit({ auth: githubPat});
 
 // Get all container packages = docker images
 var images = await octokit.paginate(octokit.rest.packages.listPackagesForOrganization, {
@@ -93,7 +95,7 @@ var images = ["rs-dpr-service_py3.13.12-2026.1.2"] // TEST, TO BE REMOVED !
 
 // Get all branches and tags of the git repository.
 // The Docker image version tags that don't match this list should be deleted.
-let repoBranchesAndTags = [
+const repoBranchesAndTags = [
     // Keep these Docker image versions
     "latest", "latest-cache", "latest-temp-cicd", "latest-temp-cicd-cache"
 ]
@@ -185,3 +187,12 @@ console.log(
     "#########################\n" +
     JSON.stringify(Object.fromEntries(versionExistingTags), null, 2)
 )
+
+*/
+
+/////////////
+// Exports //
+/////////////
+
+// module.exports = { removeSpecial }
+export default  removeSpecial
