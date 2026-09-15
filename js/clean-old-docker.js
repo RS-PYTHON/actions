@@ -17,9 +17,9 @@
 const org = "RS-PYTHON"
 const package_type = "container"
 
-// 24h ago
-const yesterday = new Date()
-yesterday.setDate(yesterday.getDate() - 1)
+// 1 week ago
+const lastWeek = new Date()
+lastWeek.setDate(lastWeek.getDate() - 7)
 
 ///////////////////////
 // Utility functions //
@@ -85,10 +85,8 @@ async function getImages(appOctokit)
 }
 
 // Clean old Docker image versions for a given git repository
-async function cleanRepo(appOctokit, repo, imagesByRepo)
+async function cleanRepo(appOctokit, repo, images, dryRun=false)
 {
-    var images = imagesByRepo.get(repo)
-
     // Get all branches and tags of the git repository.
     // The Docker image version tags that don't match this list should be deleted.
     const repoBranchesAndTags = [
@@ -102,8 +100,16 @@ async function cleanRepo(appOctokit, repo, imagesByRepo)
             repoBranchesAndTags.push(branchName + "-cache")
     })})
     await appOctokit.paginate(appOctokit.rest.repos.listTags, {owner: org, repo}).then(tags => {
-        tags.forEach(tag => repoBranchesAndTags.push(removeSpecial(tag.name)))
-    })
+        tags.forEach(tag => {
+            const tagName = removeSpecial(tag.name)
+            repoBranchesAndTags.push(tagName)
+            // Test with and without the leading 'v'
+            if (tagName.startsWith("v")) {
+                repoBranchesAndTags.push(tagName.substring(1))
+            } else {
+                repoBranchesAndTags.push("v" + tagName)
+            }
+    })})
 
     // Docker image versions that have a tag from an existing or old branch
     const versionExistingTags = new Map()
@@ -137,18 +143,20 @@ async function cleanRepo(appOctokit, repo, imagesByRepo)
                     // Image version tags
                     const currentVersionTags = version.metadata.container.tags
 
-                    // If no tags, and if older than 24h, remove this version
+                    // If no tags, and if older enough, remove this version
                     if (currentVersionTags.length == 0) {
-                        if (new Date(version.updated_at) < yesterday)
+                        if (new Date(version.updated_at) < lastWeek)
                         {
                             console.log(`Remove ${image}@${version.name}`)
-                            // await octokit.rest.packages.deletePackageVersionForOrg({ // TEST, TO BE REMOVED !
-                            //     package_type,
-                            //     package_name: image,
-                            //     org,
-                            //     package_version_id: version.id
-                            // })
-                            // cleaned = true // redo the pagination/delete on next loop
+                            if (!dryRun) {
+                                await appOctokit.rest.packages.deletePackageVersionForOrg({
+                                    package_type,
+                                    package_name: image,
+                                    org,
+                                    package_version_id: version.id
+                                })
+                                cleaned = true // redo the pagination/delete on next loop
+                            }
                         }
                         else {
                             versionExistingTags.get(image).push(version.name)

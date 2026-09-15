@@ -12,24 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Test javascript modules as if we were in a github workflow
+// Run javascript functions from imported module
 
 const { default: mod } = await import('./clean-old-docker.js')
 
-import { Octokit } from "@octokit/rest";
+// Init octokit, see https://octokit.github.io/rest.js
+import { Octokit } from "@octokit/rest"
 const githubPat = process.env.GITHUB_PAT // read github private access token from the env var
-const appOctokit = new Octokit({ auth: githubPat});
+const appOctokit = new Octokit({ auth: githubPat})
 
-var allRepoImages = await appOctokit.rest.packages.listPackagesForOrganization({
-     package_type: "container",
-     org: "RS-PYTHON",
-})
-console.log(allRepoImages)
-
-
-
+// Get all docker images, sorted by repository
 const imagesByRepo = await mod.getImages(appOctokit)
-const repo = "rs-dpr-service" // test
-await mod.cleanRepo(appOctokit, repo, imagesByRepo)
 
-let bp = 0
+// Dry run on one repo
+const repo = "rs-dpr-service"
+await mod.cleanRepo(appOctokit, repo, imagesByRepo.get(repo), true)
