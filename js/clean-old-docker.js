@@ -43,10 +43,10 @@ function removeSpecial(str) {
 ////////////////////
 
 // Return all docker images, sorted by repository
-async function getImages(octokit)
+async function getImages(appOctokit)
 {
     // Get all container packages = docker images
-    var allRepoImages = await octokit.paginate(octokit.rest.packages.listPackagesForOrganization, {
+    var allRepoImages = await appOctokit.paginate(appOctokit.rest.packages.listPackagesForOrganization, {
         package_type,
         org,
     })
@@ -85,7 +85,7 @@ async function getImages(octokit)
 }
 
 // Clean old Docker image versions for a given git repository
-async function cleanRepo(octokit, repo, imagesByRepo)
+async function cleanRepo(appOctokit, repo, imagesByRepo)
 {
     var images = imagesByRepo.get(repo)
 
@@ -95,13 +95,13 @@ async function cleanRepo(octokit, repo, imagesByRepo)
         // Keep these Docker image versions
         "latest", "latest-cache", "latest-temp-cicd", "latest-temp-cicd-cache"
     ]
-    await octokit.paginate(octokit.rest.repos.listBranches, {owner: org, repo}).then(branches => {
+    await appOctokit.paginate(appOctokit.rest.repos.listBranches, {owner: org, repo}).then(branches => {
         branches.forEach(branch => {
             const branchName = removeSpecial(branch.name)
             repoBranchesAndTags.push(branchName)
             repoBranchesAndTags.push(branchName + "-cache")
     })})
-    await octokit.paginate(octokit.rest.repos.listTags, {owner: org, repo}).then(tags => {
+    await appOctokit.paginate(appOctokit.rest.repos.listTags, {owner: org, repo}).then(tags => {
         tags.forEach(tag => repoBranchesAndTags.push(removeSpecial(tag.name)))
     })
 
@@ -124,8 +124,8 @@ async function cleanRepo(octokit, repo, imagesByRepo)
             let cleaned = false
 
             // Paginate all versions
-            const versionPages = octokit.paginate.iterator(
-                octokit.rest.packages.getAllPackageVersionsForPackageOwnedByOrg, {
+            const versionPages = appOctokit.paginate.iterator(
+                appOctokit.rest.packages.getAllPackageVersionsForPackageOwnedByOrg, {
                     package_type,
                     package_name: image,
                     org

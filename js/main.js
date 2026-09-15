@@ -18,10 +18,18 @@ const { default: mod } = await import('./clean-old-docker.js')
 
 import { Octokit } from "@octokit/rest";
 const githubPat = process.env.GITHUB_PAT // read github private access token from the env var
-const octokit = new Octokit({ auth: githubPat});
+const appOctokit = new Octokit({ auth: githubPat});
 
-const imagesByRepo = await mod.getImages(octokit)
-const repo = "rs-dpr-service" // TEST, TO BE REMOVED !
-await mod.cleanRepo(repo, imagesByRepo)
+var allRepoImages = await appOctokit.rest.packages.listPackagesForOrganization({
+     package_type: "container",
+     org: "RS-PYTHON",
+})
+console.log(allRepoImages)
+
+
+
+const imagesByRepo = await mod.getImages(appOctokit)
+const repo = "rs-dpr-service" // test
+await mod.cleanRepo(appOctokit, repo, imagesByRepo)
 
 let bp = 0

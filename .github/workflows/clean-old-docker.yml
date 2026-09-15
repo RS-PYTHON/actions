@@ -26,9 +26,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install dependencies
-        run: cd js && npm install
-
       - name: Get all docker images
         uses: actions/github-script@v9 # run javascript
         env:
@@ -40,11 +37,6 @@ jobs:
             const appOctokit = getOctokit(process.env.APP_TOKEN)
 
             // Run function from custom module
-            // const { default: mod } = await import('${{ github.workspace }}/js/clean-old-docker.js')
-            // const imagesByRepo = await mod.getImages(appOctokit)
-
-            var allRepoImages = await appOctokit.paginate(octokit.rest.packages.listPackagesForOrganization, {
-                package_type: "container",
-                org: "RS-PYTHON"
-            })
-            console.log(allRepoImages)
+            const { default: mod } = await import('${{ github.workspace }}/js/clean-old-docker.js')
+            const imagesByRepo = await mod.getImages(appOctokit)
+            console.log(imagesByRepo)
