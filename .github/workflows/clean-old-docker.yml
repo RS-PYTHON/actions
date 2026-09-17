@@ -29,12 +29,12 @@ jobs:
         name: Get all docker images
         uses: actions/github-script@v9 # run javascript
         env:
-          APP_TOKEN: ${{ secrets.CLEAN_DOCKER_IMAGES }} # github pat with delete:packages,read:packages
+          GITHUB_PAT: ${{ secrets.CLEAN_DOCKER_IMAGES }} # github pat with delete:packages,read:packages
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             // Init octokit, see https://octokit.github.io/rest.js
-            const appOctokit = getOctokit(process.env.APP_TOKEN)
+            const appOctokit = getOctokit(process.env.GITHUB_PAT)
 
             // Import custom module and get all docker images, sorted by repository
             const { default: mod } = await import('${{ github.workspace }}/js/clean-old-docker.js')
@@ -63,12 +63,12 @@ jobs:
         name: Clean images from ${{ matrix.job.repo }} git repository
         uses: actions/github-script@v9 # run javascript
         env:
-          APP_TOKEN: ${{ secrets.CLEAN_DOCKER_IMAGES }} # github pat with delete:packages,read:packages
+          GITHUB_PAT: ${{ secrets.CLEAN_DOCKER_IMAGES }} # github pat with delete:packages,read:packages
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             // Init octokit, see https://octokit.github.io/rest.js
-            const appOctokit = getOctokit(process.env.APP_TOKEN)
+            const appOctokit = getOctokit(process.env.GITHUB_PAT)
 
             // Import custom module
             const { default: mod } = await import('${{ github.workspace }}/js/clean-old-docker.js')

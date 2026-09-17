@@ -21,6 +21,14 @@ const package_type = "container"
 const lastWeek = new Date()
 lastWeek.setDate(lastWeek.getDate() - 7)
 
+// For these docker images, always keep old docker tagged versions
+const keepOldTagsFor = [
+    "dask/dask-gateway",
+    "prefecthq/prefect",
+    "python",
+    "stac-browser"
+]
+
 ///////////////////////
 // Utility functions //
 ///////////////////////
@@ -38,6 +46,43 @@ function removeSpecial(str) {
     return str.replace(/[^a-zA-Z0-9\.\-\_]/g, "-")
 }
 
+// Return a token used for https://ghcr.io/v2/${org}/${image}/manifests/${sha256}
+async function getRegistryToken(image)
+{
+    // From the env var, read the github private access token (pat) with read:packages
+    const basic = Buffer.from(`token:${process.env.GITHUB_PAT}`).toString("base64")
+    const url = `https://ghcr.io/token?scope=repository:${org}/${image}:pull`
+    const res = await fetch(url, {headers: {
+            Authorization: `Basic ${basic}`
+        }})
+    const content = await res.json()
+    if (!res.ok) {
+        throw new Error(`Error '${res.status}' calling ${url}: ${JSON.stringify(content)}`)
+    }
+    return content.token;
+}
+
+// Return more manifest info and notably the list of children manifests, if any.
+// This seems to do about the same thing than the "docker manifest inspect" command line.
+async function inspectManifest(token, image, sha256)
+{
+    const url = `https://ghcr.io/v2/${org}/${image}/manifests/${sha256}`
+    const res = await fetch(url, {headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: [
+                "application/vnd.oci.image.index.v1+json",
+                "application/vnd.docker.distribution.manifest.list.v2+json",
+                "application/vnd.oci.image.manifest.v1+json",
+                "application/vnd.docker.distribution.manifest.v2+json",
+                ].join(",")
+        }})
+    const content = await res.json()
+    if (!res.ok) {
+        throw new Error(`Error '${res.status}' calling ${url}: ${JSON.stringify(content)}`)
+    }
+    return content
+}
+
 ////////////////////
 // Main functions //
 ////////////////////
@@ -46,7 +91,7 @@ function removeSpecial(str) {
 async function getImages(appOctokit)
 {
     // Get all container packages = docker images
-    var allRepoImages = await appOctokit.paginate(appOctokit.rest.packages.listPackagesForOrganization, {
+    const allRepoImages = await appOctokit.paginate(appOctokit.rest.packages.listPackagesForOrganization, {
         package_type,
         org,
     })
@@ -112,84 +157,177 @@ async function cleanRepo(appOctokit, repo, images, dryRun=false)
     })})
 
     // Docker image versions that have a tag from an existing or old branch
-    const versionExistingTags = new Map()
-    const versionOldTags = new Map()
+
+    const existingTags = new Map() // image => [manifest]
+    const oldTags = new Map() // image => [manifest]
+    const recentUntagged = new Map() // image => [manifest]
+
+    const logExistingTags = new Map() // image => [tags / sha256]
+    const logOldTags = new Map() // image => [tags / sha256]
+    const logRecentUntagged = new Map() // image => [sha256]
+    const logChildManifest = new Map() // image => [sha256]
+
     await images.forEach(image => {
-        versionExistingTags.set(image, [])
-        versionOldTags.set(image, [])
+        existingTags.set(image, [])
+        oldTags.set(image, [])
+        recentUntagged.set(image, [])
+        logExistingTags.set(image, [])
+        logOldTags.set(image, [])
+        logRecentUntagged.set(image, [])
+        logChildManifest.set(image, [])
     })
 
     // Clean old docker image versions
     async function _cleanImageVersions(image)
     {
-        // While we paginate all the image versions, we'll remove some of these versions.
-        // I'm not sure how the pagination works in this case, so if some images were
-        // removed, we'll run this function again to be sure to remove everything.
-        while(true)
-        {
-            let cleaned = false
+        // Each docker image version is actually called a "manifest".
+        // Each manifest can have children manifests (in case of multi-arch build).
+        // These children manifests have no tagged, but they must not be deleted !
+        // For every existing manifest, we save the list of its children manifests.
+        const allManifests = new Map() // sha256 => {"id": package_version_id, "children": [sha256]}
+        const token = await getRegistryToken(image)
 
-            // Paginate all versions
-            const versionPages = appOctokit.paginate.iterator(
-                appOctokit.rest.packages.getAllPackageVersionsForPackageOwnedByOrg, {
-                    package_type,
-                    package_name: image,
-                    org
-                })
-            for await (const {data: versions} of versionPages) {
-                // For each docker image version
-                await Promise.all(versions.map(async (version) =>
+        // Paginate all versions
+        const versionPages = appOctokit.paginate.iterator(
+            appOctokit.rest.packages.getAllPackageVersionsForPackageOwnedByOrg, {
+                package_type,
+                package_name: image,
+                org
+            })
+        for await (const {data: versions} of versionPages) {
+
+            //// TEMP !!!!!!!!!!!!!!!!!!!!!
+            if (allManifests.size > 20) break
+
+            // For each docker image version (=manifest)
+            await Promise.all(versions.map(async (manifest) =>
+            {
+                const manifestSha = manifest.name // sha256
+                const manifestId = manifest.id // package version id
+                const manifestTags = manifest.metadata.container.tags // docker image tags
+
+
+                //// TEMP !!!!!!!!!!!!!!!!!!!!!
+                if (allManifests.size > 20) return
+
+
+
+                // Get the child manifest shas, if any
+                allManifests.set(manifestSha, {"id": manifestId, "childrenSha": []})
+                const inspect = await inspectManifest(token, image, manifestSha)
+                if ("manifests" in inspect)
                 {
-                    // Image version tags
-                    const currentVersionTags = version.metadata.container.tags
-
-                    // If no tags, and if older enough, remove this version
-                    if (currentVersionTags.length == 0) {
-                        if (new Date(version.updated_at) < lastWeek)
-                        {
-                            console.log(`Remove ${image}@${version.name}`)
-                            if (!dryRun) {
-                                await appOctokit.rest.packages.deletePackageVersionForOrg({
-                                    package_type,
-                                    package_name: image,
-                                    org,
-                                    package_version_id: version.id
-                                })
-                                cleaned = true // redo the pagination/delete on next loop
-                            }
-                        }
-                        else {
-                            versionExistingTags.get(image).push(version.name)
-                        }
+                    const ref = (manifestTags.length == 0) ? `@${manifestSha}` : `:${manifestTags[0]}`
+                    console.log(`Save child manifests for ${image}${ref}`)
+                    for (const child of inspect.manifests) {
+                        allManifests.get(manifestSha).childrenSha.push(child.digest)
                     }
+                }
 
-                    // Else check if the tag corresponds to a git tag or branch
-                    else if (currentVersionTags.filter(value => repoBranchesAndTags.includes(value)).length == 0) {
-                        versionOldTags.get(image).push(currentVersionTags.join(","))
+                // If no tags...
+                if (manifestTags.length == 0) {
+                    // But too recent to be deleted
+                    if (new Date(manifest.updated_at) > lastWeek) {
+                        recentUntagged.get(image).push(manifest)
+                        logRecentUntagged.get(image).push(manifestSha)
+                    }
+                // Else check if the tag corresponds to a git tag or branch
+                } else {
+                    const logId = `${manifestTags.join(",")} (${manifestSha})`
+                    if (
+                        (!keepOldTagsFor.includes(image)) &&
+                        (manifestTags.filter(value => repoBranchesAndTags.includes(value)).length == 0)
+                    ) {
+                        oldTags.get(image).push(manifest)
+                        logOldTags.get(image).push(logId)
                     } else {
-                        versionExistingTags.get(image).push(currentVersionTags.join(","))
+                        existingTags.get(image).push(manifest)
+                        logExistingTags.get(image).push(logId)
                     }
-                }))
+                } // we have tags
+            })) // for each version (=manifest)
+        } // for each versionPages
+
+        // Recursively walk all the manifests. Remove those we want to keep.
+        function cleanManifests(parentSha, firstLevel=true)
+        {
+            // Current sha has already been cleaned
+            if (!allManifests.get(parentSha)) {
+                return
             }
-            if (!cleaned) {
-                break
+
+            // Save sha for logging
+            if (!firstLevel) {
+                logChildManifest.get(image).push(parentSha)
             }
+
+            // Recursive calls
+            for (const childSha of allManifests.get(parentSha).childrenSha) {
+                cleanManifests(childSha, false)
+            }
+
+            // Remove manifest from map
+            allManifests.delete(parentSha)
+        }
+
+        // Call the recursive function for all first level manifests we keep
+        for (const keepManifests of [existingTags, oldTags, recentUntagged]) {
+            for (const manifest of keepManifests.get(image)) {
+                cleanManifests(manifest.name)
+            }
+        }
+
+        // Remove duplicate shas from logs
+        logRecentUntagged.set(
+            image,
+            logRecentUntagged.get(image).filter(sha => !logChildManifest.get(image).includes(sha))
+        )
+
+        if (allManifests.size == 0) {
+            console.log(`Nothing to remove for ${image}`)
+        }
+        // Delete remaining manifests. Iterate over (first level sha / package version id)
+        else {
+            await Promise.all([...allManifests].flatMap(async ([manifestSha, {id: manifestId}]) => {
+                console.log(`Remove ${image}@${manifestSha} (${manifestId})`)
+                if (!dryRun) {
+                    await appOctokit.rest.packages.deletePackageVersionForOrg({
+                        package_type,
+                        package_name: image,
+                        org,
+                        package_version_id: manifestId
+                    })
+                }
+            }))
         }
     }
 
+    // Clean all images
     await Promise.all(images.map(async (image) => _cleanImageVersions(image)))
 
     console.log(
         "\n" +
-        "NOTE: we keep these old tags but we could remove them\n" +
-        "#####################################################\n" +
-        JSON.stringify(Object.fromEntries(versionOldTags), null, 2)
+        "These are child manifests of versions we keep (don't delete them !)\n" +
+        "###################################################################\n" +
+        JSON.stringify(Object.fromEntries(logChildManifest), null, 2)
+    )
+    console.log(
+        "\n" +
+        "These have no tags but are too recent to be deleted\n" +
+        "###################################################\n" +
+        JSON.stringify(Object.fromEntries(logRecentUntagged), null, 2)
+    )
+    console.log(
+        "\n" +
+        "We keep these old tags but we could delete them\n" +
+        "###############################################\n" +
+        JSON.stringify(Object.fromEntries(logOldTags), null, 2)
     )
     console.log(
         "\n" +
         "We keep these recent tags\n" +
         "#########################\n" +
-        JSON.stringify(Object.fromEntries(versionExistingTags), null, 2)
+        JSON.stringify(Object.fromEntries(logExistingTags), null, 2)
     )
 }
 
