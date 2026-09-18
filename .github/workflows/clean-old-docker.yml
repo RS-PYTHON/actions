@@ -18,74 +18,13 @@ on:
   push
 
 env:
-  RUN_PARALLEL: false
+  RUN_PARALLEL: true
   DRY_RUN: true
-  CACHE_KEY: cache-all
+  CACHE_KEY: cache-clean-old-docker
   CACHE_DIR: ./js/cache
 
 jobs:
-
-
-
-  mytest:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Restore
-        id: restore
-        uses: actions/cache/restore@v6
-        with:
-          key: ${{ env.CACHE_KEY }}
-          path: ${{ env.CACHE_DIR }}/**
-
-      - name: Test cache
-        run: |
-          set -x
-          find ${{ env.CACHE_DIR }} || echo not found
-
-      - name: Process
-        id: process
-        uses: actions/github-script@v9 # run javascript
-        with:
-          script: |
-            console.log("Cache: ${{ env.CACHE_DIR }}/xxx")
-            const fs = require("node:fs")
-            fs.mkdirSync("${{ env.CACHE_DIR }}/a", { recursive: true} )
-
-            fs.writeFileSync("${{ env.CACHE_DIR }}/a/toto", "titi", "utf8")
-            fs.writeFileSync("${{ env.CACHE_DIR }}/a/tutu", "tutu", "utf8")
-            fs.writeFileSync("${{ env.CACHE_DIR }}/a/titi", "tete", "utf8")
-
-            throw Error("test !")
-
-      - name: Test before new caching
-        if: always()
-        run: |
-          set -x
-          find ${{ env.CACHE_DIR }} || echo not found
-
-      - name: Remove old cache
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh cache delete ${{ env.CACHE_KEY }}
-
-      - name: Save
-        if: always()
-        uses: actions/cache/save@v6
-        with:
-          key: ${{ env.CACHE_KEY }}
-          path: ${{ env.CACHE_DIR }}/**
-
-
-
   get-images:
-    if: false
     name: Get all docker images
     runs-on: ubuntu-latest
     outputs:
@@ -121,22 +60,36 @@ jobs:
     name: Clean from ${{ matrix.job.repo }}
     runs-on: ubuntu-latest
     needs: get-images
+    permissions: # to remove old cache
+      actions: write
+      contents: read
     strategy:
       matrix:
         job: ${{ fromJSON(needs.get-images.outputs.jobs) }}
+      fail-fast: false
     steps:
       - if: ${{ env.RUN_PARALLEL == 'true' }}
         uses: actions/checkout@v7
 
       - if: ${{ env.RUN_PARALLEL == 'true' }}
-        id: clean-repo
-        name: Clean images from ${{ matrix.job.repo }} git repository
+        name: Restore cache
+        uses: actions/cache/restore@v6
+        with:
+          key: ${{ env.CACHE_KEY }}-${{ matrix.job.repo }}
+          path: ${{ env.CACHE_DIR }}/**
+
+      - if: ${{ env.RUN_PARALLEL == 'true' }}
+        name: Clean ${{ matrix.job.repo }} images
         uses: actions/github-script@v9 # run javascript
         env:
           GITHUB_PAT: ${{ secrets.CLEAN_DOCKER_IMAGES }} # github pat with delete:packages,read:packages
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require("node:fs")
+            const path = require("node:path")
+            const cacheDir = "${{ env.CACHE_DIR }}"
+
             // Init octokit, see https://octokit.github.io/rest.js
             const appOctokit = getOctokit(process.env.GITHUB_PAT)
 
@@ -146,5 +99,29 @@ jobs:
             // Clean docker images of this git repo
             repo = "${{ matrix.job.repo }}"
             images = ${{ toJSON(matrix.job.images) }}
-            console.log(`\n## Clean ${repo} images: ${images} ##\n`)
-            mod.cleanRepo(appOctokit, repo, images, ${{ env.DRY_RUN }})
+
+            // Read cache of manifest lists
+            const cacheAllManifests = new Map()
+            mod.readCacheManifests(images, cacheAllManifests, cacheDir)
+
+            // Run cleaning
+            try {
+                console.log(`\n## Clean ${repo} images: ${images} ##\n`)
+                await mod.cleanRepo(appOctokit, cacheAllManifests, repo, images, ${{ env.DRY_RUN }})
+            }
+            // Save the cache, even in case of error
+            finally {
+                mod.writeCacheManifests(cacheAllManifests, cacheDir)
+            }
+
+      - if: ${{ always() && (env.RUN_PARALLEL == 'true') }}
+        name: Remove old cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh cache delete ${{ env.CACHE_KEY }}-${{ matrix.job.repo }}
+      - if: ${{ always() && (env.RUN_PARALLEL == 'true') }}
+        name: Save new cache
+        uses: actions/cache/save@v6
+        with:
+          key: ${{ env.CACHE_KEY }}-${{ matrix.job.repo }}
+          path: ${{ env.CACHE_DIR }}/**

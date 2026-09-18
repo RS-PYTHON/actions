@@ -29,7 +29,7 @@ const { default: mod } = await import('./clean-old-docker.js')
 // Constants //
 ///////////////
 
-const runParallel = false
+const runParallel = true
 
 //////////
 // Main //
@@ -46,22 +46,10 @@ const imagesByRepo = await mod.getImages(appOctokit)
 // Init local cache directory
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const cacheDir = join(__dirname, "cache")
-if (!existsSync(cacheDir)) {
-    mkdirSync(cacheDir)
-}
 
-// Read cache for manifest lists
+// Read cache of manifest lists
 const cacheAllManifests = new Map()
-imagesByRepo.forEach((images, repo) => {
-    images.forEach(image => {
-        try {
-            const cacheFile = join(cacheDir, format(mod.cacheManifestTemplate, mod.removeSpecial(image)))
-            const str = readFileSync(cacheFile, "utf8")
-            cacheAllManifests.set(image, new Map(Object.entries(JSON.parse(str))))
-        }
-        catch {}
-    })
-})
+imagesByRepo.forEach((images, repo) => mod.readCacheManifests(images, cacheAllManifests, cacheDir))
 
 // Run in parallel on all images of one git repo
 if (runParallel)
@@ -71,18 +59,14 @@ if (runParallel)
     let images = imagesByRepo.get(repo)
     images = [images[0], images[1]]
 
+    // Run cleaning
     try {
-        console.log(`\n## Clean ${repo} images: ${images} ##\n`)
+        console.log(`\n## Clean ${repo} images: ${images} ##\n`)
         await mod.cleanRepo(appOctokit, cacheAllManifests, repo, images, true)
     }
-
     // Save the cache, even in case of error
     finally {
-        cacheAllManifests.forEach((cached, image) => {
-            const cacheFile = join(cacheDir, format(mod.cacheManifestTemplate, mod.removeSpecial(image)))
-            const str = JSON.stringify(Object.fromEntries(cached))
-            writeFileSync(cacheFile, str, "utf8")
-        })
+        mod.writeCacheManifests(cacheAllManifests, cacheDir)
     }
 } // run parallel
 
@@ -119,7 +103,7 @@ else
         })
     })
 
-    // Clean each repo/image
+    // Run cleaning on each repo/image
     try {
         for (i = 0; i < repoAndImages.length; ++i)
         {
@@ -139,6 +123,10 @@ else
 
     // Save the cache, even in case of error
     finally {
+        if (!existsSync(cacheDir)) {
+            mkdirSync(cacheDir)
+        }
+
         cacheAllManifests.forEach((cached, image) => {
             const cacheFile = join(cacheDir, format(mod.cacheManifestTemplate, mod.removeSpecial(image)))
             const str = JSON.stringify(Object.fromEntries(cached))
@@ -149,12 +137,4 @@ else
         const str = JSON.stringify([lastRepoRun, lastImageRun])
         writeFileSync(cacheFile, str, "utf8")
     }
-
-
-
-
-
-
-
-
 }

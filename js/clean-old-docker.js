@@ -14,9 +14,10 @@
 
 // Clean old Docker image versions from the GitHub container registry (GHCR)
 
-import { readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { format } from 'util'
 
 const org = "RS-PYTHON"
 const package_type = "container"
@@ -61,6 +62,39 @@ async function getRemoveOldTagsFor()
         images.push(line.trim())
     })
     return images
+}
+
+// Read cache of manifest lists for a list of docker images
+function readCacheManifests(images, cacheAllManifests, cacheDir)
+{
+    images.forEach(image => {
+        try {
+            const cacheFile = join(cacheDir, format(cacheManifestTemplate, removeSpecial(image)))
+            const str = readFileSync(cacheFile, "utf8")
+            cacheAllManifests.set(image, new Map(Object.entries(JSON.parse(str))))
+        }
+        catch {}
+    })
+    console.log(
+        "\nRead cached manifests:\n" +
+        JSON.stringify(Object.fromEntries(cacheAllManifests), null, 2)) + "\n"
+}
+
+// Write cache of manifest lists
+function writeCacheManifests(cacheAllManifests, cacheDir)
+{
+    console.log(
+        "\nWrite cached manifests:\n" +
+        JSON.stringify(Object.fromEntries(cacheAllManifests), null, 2)) + "\n"
+
+    if (!existsSync(cacheDir)) {
+        mkdirSync(cacheDir)
+    }
+    cacheAllManifests.forEach((cached, image) => {
+        const cacheFile = join(cacheDir, format(cacheManifestTemplate, removeSpecial(image)))
+        const str = JSON.stringify(Object.fromEntries(cached))
+        writeFileSync(cacheFile, str, "utf8")
+    })
 }
 
 // Return a token used for https://ghcr.io/v2/${org}/${image}/manifests/${sha256}
@@ -225,7 +259,7 @@ async function cleanRepo(
         for await (const {data: versions} of versionPages) {
 
             //// TEMP !!!!!!!!!!!!!!!!!!!!!
-            if (allManifests.size > 30) break
+            // if (allManifests.size > 5) break
 
             // For each docker image version (=manifest)
             await Promise.all(versions.map(async (manifest) =>
@@ -236,7 +270,7 @@ async function cleanRepo(
 
 
                 //// TEMP !!!!!!!!!!!!!!!!!!!!!
-                if (allManifests.size > 30) return
+                // if (allManifests.size > 5) return
 
 
                 const ref = (manifestTags.length == 0) ? `@${manifestSha}` : `:${manifestTags[0]}`
@@ -326,12 +360,12 @@ async function cleanRepo(
         )
 
         if (allManifests.size == 0) {
-            console.log(`Nothing to remove for ${image}`)
+            console.log(`Nothing to delete for ${image}`)
         }
         // Delete remaining manifests. Iterate over (first level sha / package version id)
         else {
             await Promise.all([...allManifests].flatMap(async ([manifestSha, {id: manifestId}]) => {
-                console.log(`Remove ${image}@${manifestSha} (${manifestId})`)
+                console.log(`Delete ${image}@${manifestSha} (${manifestId})`)
                 if (!dryRun) {
                     await appOctokit.rest.packages.deletePackageVersionForOrg({
                         package_type,
@@ -371,10 +405,13 @@ async function cleanRepo(
         "#########################\n" +
         JSON.stringify(Object.fromEntries(logExistingTags), null, 2)
     )
+
+    //// TEMP !!!!!!!!!!!!!!!!!!!!!
+    throw Error("test !")
 } // function cleanRepo
 
 /////////////
 // Exports //
 /////////////
 
-export default {cacheLastRun, cacheManifestTemplate, cleanRepo, getImages, removeSpecial}
+export default {cacheLastRun, cleanRepo, getImages, readCacheManifests, writeCacheManifests}
