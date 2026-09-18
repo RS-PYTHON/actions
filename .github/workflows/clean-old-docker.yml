@@ -20,9 +20,72 @@ on:
 env:
   RUN_PARALLEL: false
   DRY_RUN: true
+  CACHE_KEY: cache-all
+  CACHE_DIR: ./js/cache
 
 jobs:
+
+
+
+  mytest:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore
+        id: restore
+        uses: actions/cache/restore@v6
+        with:
+          key: ${{ env.CACHE_KEY }}
+          path: ${{ env.CACHE_DIR }}/**
+
+      - name: Test cache
+        run: |
+          set -x
+          find ${{ env.CACHE_DIR }} || echo not found
+
+      - name: Process
+        id: process
+        uses: actions/github-script@v9 # run javascript
+        with:
+          script: |
+            console.log("Cache: ${{ env.CACHE_DIR }}/xxx")
+            const fs = require("node:fs")
+            fs.mkdirSync("${{ env.CACHE_DIR }}/a", { recursive: true} )
+
+            fs.writeFileSync("${{ env.CACHE_DIR }}/a/toto", "titi", "utf8")
+            fs.writeFileSync("${{ env.CACHE_DIR }}/a/tutu", "tutu", "utf8")
+            fs.writeFileSync("${{ env.CACHE_DIR }}/a/titi", "tete", "utf8")
+
+            throw Error("test !")
+
+      - name: Test before new caching
+        if: always()
+        run: |
+          set -x
+          find ${{ env.CACHE_DIR }} || echo not found
+
+      - name: Remove old cache
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh cache delete ${{ env.CACHE_KEY }}
+
+      - name: Save
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          key: ${{ env.CACHE_KEY }}
+          path: ${{ env.CACHE_DIR }}/**
+
+
+
   get-images:
+    if: false
     name: Get all docker images
     runs-on: ubuntu-latest
     outputs:
@@ -62,10 +125,10 @@ jobs:
       matrix:
         job: ${{ fromJSON(needs.get-images.outputs.jobs) }}
     steps:
-      - if: ${{ env.RUN_PARALLEL == true }}
+      - if: ${{ env.RUN_PARALLEL == 'true' }}
         uses: actions/checkout@v7
 
-      - if: ${{ env.RUN_PARALLEL == true }}
+      - if: ${{ env.RUN_PARALLEL == 'true' }}
         id: clean-repo
         name: Clean images from ${{ matrix.job.repo }} git repository
         uses: actions/github-script@v9 # run javascript
