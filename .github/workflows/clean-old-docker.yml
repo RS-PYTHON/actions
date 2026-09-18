@@ -80,7 +80,8 @@ jobs:
             // Import custom module
             const { default: mod } = await import('${{ github.workspace }}/js/clean-old-docker.js')
 
-            // Clean docker images from this git repo
+            // Clean docker images of this git repo
             repo = "${{ matrix.job.repo }}"
             images = ${{ toJSON(matrix.job.images) }}
+            console.log(`\n## Clean ${repo} images: ${images} ##\n`)
             mod.cleanRepo(appOctokit, repo, images, ${{ env.DRY_RUN }})

@@ -14,12 +14,15 @@
 
 // Clean old Docker image versions from the GitHub container registry (GHCR)
 
-import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 
 const org = "RS-PYTHON"
 const package_type = "container"
+
+const cacheLastRun = "cache_last_run"
+const cacheManifestTemplate = "cache_manifest_%s"
 
 // 1 week ago
 const lastWeek = new Date()
@@ -27,7 +30,6 @@ lastWeek.setDate(lastWeek.getDate() - 7)
 
 // Remove docker image versions with old git tags, only for these images
 const removeOldTagsFor = await getRemoveOldTagsFor()
-console.log(removeOldTagsFor)
 
 ///////////////////////
 // Utility functions //
@@ -51,11 +53,10 @@ async function getRemoveOldTagsFor()
 {
     const images = []
 
-    const __filename = fileURLToPath(import.meta.url)
-    const __dirname = dirname(__filename)
-
+    // Read text file from the same directory as current module
+    const __dirname = dirname(fileURLToPath(import.meta.url))
     const filePath = join(__dirname, "remove-old-tags.txt")
-    const contents = await readFile(filePath, 'utf8')
+    const contents = readFileSync(filePath, "utf8")
     contents.split("\n").forEach(line => {
         images.push(line.trim())
     })
@@ -104,8 +105,9 @@ async function inspectManifest(token, image, sha256)
 ////////////////////
 
 // Return all docker images, sorted by repository
-async function getImages(appOctokit)
-{
+async function getImages(
+    appOctokit // octokit client
+) {
     // Get all container packages = docker images
     const allRepoImages = await appOctokit.paginate(appOctokit.rest.packages.listPackagesForOrganization, {
         package_type,
@@ -113,7 +115,7 @@ async function getImages(appOctokit)
     })
 
     // Sort them by git repository and last update
-    let imagesByRepo = new Map()
+    let imagesByRepo = new Map() // {repo: [image]}
     let imagesByDate = new Map()
     await allRepoImages.forEach(p => {
         pushToMapArray(imagesByRepo, p.repository.name, p.name)
@@ -146,8 +148,13 @@ async function getImages(appOctokit)
 }
 
 // Clean old Docker image versions for a given git repository
-async function cleanRepo(appOctokit, cacheAllManifests, repo, images, dryRun=false)
-{
+async function cleanRepo(
+    appOctokit, // octokit client
+    cacheAllManifests, // Map as {image: {parentSha: [childSha]}}
+    repo, // git repository (str)
+    images, // docker images [str]
+    dryRun=false // if true, only print logs, don't delete anything
+) {
     // Get all branches and tags of the git repository.
     // The Docker image version tags that don't match this list should be deleted.
     const repoBranchesAndTags = [
@@ -174,14 +181,14 @@ async function cleanRepo(appOctokit, cacheAllManifests, repo, images, dryRun=fal
 
     // Docker image versions that have a tag from an existing or old branch
 
-    const existingTags = new Map() // image => [manifest]
-    const oldTags = new Map() // image => [manifest]
-    const recentUntagged = new Map() // image => [manifest]
+    const existingTags = new Map() // {image: [manifest]}
+    const oldTags = new Map() // {image: [manifest]}
+    const recentUntagged = new Map() // {image: [manifest]}
 
-    const logExistingTags = new Map() // image => [tags / sha256]
-    const logOldTags = new Map() // image => [tags / sha256]
-    const logRecentUntagged = new Map() // image => [sha256]
-    const logChildManifest = new Map() // image => [sha256]
+    const logExistingTags = new Map() // {image: ["tags (sha256)"]}
+    const logOldTags = new Map() // {image: ["tags (sha256)"]}
+    const logRecentUntagged = new Map() // {image: [sha256]}
+    const logChildManifest = new Map() // {image: [sha256]}
 
     await images.forEach(image => {
         existingTags.set(image, [])
@@ -218,7 +225,7 @@ async function cleanRepo(appOctokit, cacheAllManifests, repo, images, dryRun=fal
         for await (const {data: versions} of versionPages) {
 
             //// TEMP !!!!!!!!!!!!!!!!!!!!!
-            if (allManifests.size > 20) break
+            if (allManifests.size > 30) break
 
             // For each docker image version (=manifest)
             await Promise.all(versions.map(async (manifest) =>
@@ -229,11 +236,15 @@ async function cleanRepo(appOctokit, cacheAllManifests, repo, images, dryRun=fal
 
 
                 //// TEMP !!!!!!!!!!!!!!!!!!!!!
-                if (allManifests.size > 20) return
+                if (allManifests.size > 30) return
 
+
+                const ref = (manifestTags.length == 0) ? `@${manifestSha}` : `:${manifestTags[0]}`
+                console.log(`Read child manifests for ${image}${ref}`)
 
                 // Try to get the child manifests from the cache
-                if ((cached = cacheAllManifests.get(image).get(manifestSha)) != undefined) {
+                const cached = cacheAllManifests.get(image).get(manifestSha)
+                if (cached != undefined) {
                     allManifests.set(manifestSha, structuredClone(cached))
                 }
 
@@ -242,10 +253,7 @@ async function cleanRepo(appOctokit, cacheAllManifests, repo, images, dryRun=fal
                 {
                     allManifests.set(manifestSha, {"id": manifestId, "childrenSha": []})
                     const inspect = await inspectManifest(token, image, manifestSha)
-                    if ("manifests" in inspect)
-                    {
-                        const ref = (manifestTags.length == 0) ? `@${manifestSha}` : `:${manifestTags[0]}`
-                        console.log(`Save child manifests for ${image}${ref}`)
+                    if ("manifests" in inspect) {
                         for (const child of inspect.manifests) {
                             allManifests.get(manifestSha).childrenSha.push(child.digest)
                         }
@@ -369,4 +377,4 @@ async function cleanRepo(appOctokit, cacheAllManifests, repo, images, dryRun=fal
 // Exports //
 /////////////
 
-export default {getImages, cleanRepo}
+export default {cacheLastRun, cacheManifestTemplate, cleanRepo, getImages, removeSpecial}
