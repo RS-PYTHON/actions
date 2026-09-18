@@ -17,6 +17,10 @@ name: Clean old GHCR Docker images
 on:
   push
 
+env:
+  RUN_PARALLEL: false
+  DRY_RUN: true
+
 jobs:
   get-images:
     name: Get all docker images
@@ -50,7 +54,7 @@ jobs:
             const fs = require("fs")
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `jobs=${JSON.stringify(jobs)}\n`)
 
-  clean-repos:
+  clean-repos-parallel:
     name: Clean from ${{ matrix.job.repo }}
     runs-on: ubuntu-latest
     needs: get-images
@@ -58,8 +62,11 @@ jobs:
       matrix:
         job: ${{ fromJSON(needs.get-images.outputs.jobs) }}
     steps:
-      - uses: actions/checkout@v7
-      - id: clean-repo
+      - if: ${{ env.RUN_PARALLEL == true }}
+        uses: actions/checkout@v7
+
+      - if: ${{ env.RUN_PARALLEL == true }}
+        id: clean-repo
         name: Clean images from ${{ matrix.job.repo }} git repository
         uses: actions/github-script@v9 # run javascript
         env:
@@ -76,4 +83,4 @@ jobs:
             // Clean docker images from this git repo
             repo = "${{ matrix.job.repo }}"
             images = ${{ toJSON(matrix.job.images) }}
-            mod.cleanRepo(appOctokit, repo, images, false)
+            mod.cleanRepo(appOctokit, repo, images, ${{ env.DRY_RUN }})

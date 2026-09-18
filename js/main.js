@@ -26,7 +26,9 @@ const imagesByRepo = await mod.getImages(appOctokit)
 
 // Dry run on one repo
 const repo = "rs-dpr-service"
-await mod.cleanRepo(appOctokit, repo, imagesByRepo.get(repo), true)
+// const images = imagesByRepo.get(repo)
+const images = ["toto"]
+await mod.cleanRepo(appOctokit, repo, images, true)
 
 
 // TODO GÉRER CACHE https://github.com/actions/cache

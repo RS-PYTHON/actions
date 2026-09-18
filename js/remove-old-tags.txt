@@ -1,0 +1,66 @@
+
+# Remove docker image versions with old git tags, only for these images:
+
+# rs-client-libraries
+jupyter/rs-client-libraries/local
+prefect/rs-client-libraries/k8s
+prefect/rs-client-libraries/local
+rs-client-libraries_store
+
+# rs-demo
+# NOT dask/dask-gateway
+
+# rs-dpr-service
+rs-dpr-service_py3.11.7-2024.5.2
+rs-dpr-service_py3.11.7-2026.1.2
+rs-dpr-service_py3.13.12-2026.1.2
+rs-dpr-service_py3.13.12-2026.3.0
+rs-dpr-service_py3.13.12-2026.7.0
+rs-dpr-servicepy3.11.7-2024.5.2
+rs-dpr-servicepy3.11.7-2026.1.2
+rs-dpr-servicepy3.13.12-2026.1.2
+
+# rs-server
+dask/staging/k8s
+dask/staging/local
+# NOT python
+quay.io/jupyter/base-notebook
+rs-server-adgs
+rs-server-cadip
+rs-server-catalog
+rs-server-frontend
+rs-server-osam
+rs-server-prip
+rs-server-staging
+# NOT stac-browser
+
+# rs-testmeans
+rs-testmeans_adgs-station-mock
+rs-testmeans_cadip-station-mock
+rs-testmeans_dpr-processor-mock
+rs-testmeans_lta-station-mock
+rs-testmeans_prip-station-mock
+
+# rs-workflow-env
+dask/cpm/k8s
+dask/cpm2/k8s
+dask/cpm2/local
+dask/cpm2/localcluster
+dask/cpm3/k8s
+dask/cpm3/local
+dask/cpm3/localcluster
+dask/l0/k8s
+dask/l0/local
+dask/l0/localcluster
+dask/mockup/k8s
+dask/mockup/local
+dask/s1ard/k8s
+dask/s1ard/local
+dask/s1ard/localcluster
+dask/s3olci/k8s
+dask/s3olci/local
+dask/s3olci/localcluster
+# NOT prefecthq/prefect
+rs-workflow-env-cpm
+rs-workflow-env-jupyter
+rs-workflow-env-testcpm
