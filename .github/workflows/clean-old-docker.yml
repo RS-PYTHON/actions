@@ -19,9 +19,10 @@ on:
 
 env:
   RUN_PARALLEL: true
-  DRY_RUN: true
-  CACHE_KEY: cache-clean-old-docker
-  CACHE_DIR: ./js/cache
+  DRY_RUN: false # if true: don't delete images for real, only print log
+  CACHE_KEY: cache-clean-old-docker # name of the github ci/cd cache where we save the manifest lists
+  CACHE_DIR: ./js/cache # where this cache is saved on local
+  PRINT_CACHE: false # print cache contents, before and after processing
 
 jobs:
   get-images:
@@ -80,9 +81,9 @@ jobs:
 
       - if: ${{ env.RUN_PARALLEL == 'true' }}
         name: Clean ${{ matrix.job.repo }} images
-        uses: actions/github-script@v9 # run javascript
         env:
           GITHUB_PAT: ${{ secrets.CLEAN_DOCKER_IMAGES }} # github pat with delete:packages,read:packages
+        uses: actions/github-script@v9 # run javascript
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

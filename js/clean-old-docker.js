@@ -36,6 +36,16 @@ const removeOldTagsFor = await getRemoveOldTagsFor()
 // Utility functions //
 ///////////////////////
 
+// JSON.stringify on a Map
+function jsonStringifyMap(map) {
+    return JSON.stringify(map, (key, value) => {
+        if (value instanceof Map) {
+            return Object.fromEntries(value);
+        }
+        return value;
+    }, 2);
+}
+
 // Add key/value to a map of arrays
 function pushToMapArray(map, key, value) {
   if (!map.has(key)) map.set(key, []);
@@ -75,24 +85,25 @@ function readCacheManifests(images, cacheAllManifests, cacheDir)
         }
         catch {}
     })
-    console.log(
-        "\nRead cached manifests:\n" +
-        JSON.stringify(Object.fromEntries(cacheAllManifests), null, 2)) + "\n"
+
+    if (["1", "true"].includes(process.env.PRINT_CACHE)) {
+        console.log(`\nRead cached manifests:\n${jsonStringifyMap(cacheAllManifests)}\n`)
+    }
 }
 
 // Write cache of manifest lists
 function writeCacheManifests(cacheAllManifests, cacheDir)
 {
-    console.log(
-        "\nWrite cached manifests:\n" +
-        JSON.stringify(Object.fromEntries(cacheAllManifests), null, 2)) + "\n"
+    if (["1", "true"].includes(process.env.PRINT_CACHE)) {
+        console.log(`\nWrite cached manifests:\n${jsonStringifyMap(cacheAllManifests)}\n`)
+    }
 
     if (!existsSync(cacheDir)) {
         mkdirSync(cacheDir)
     }
     cacheAllManifests.forEach((cached, image) => {
         const cacheFile = join(cacheDir, format(cacheManifestTemplate, removeSpecial(image)))
-        const str = JSON.stringify(Object.fromEntries(cached))
+        const str = jsonStringifyMap(cached)
         writeFileSync(cacheFile, str, "utf8")
     })
 }
@@ -166,17 +177,20 @@ async function getImages(
         imagesByDate.set(key, value.toISOString().split("T")[0])
     })
 
+    // Hard test a single repo
+    // imagesByRepo = new Map([["rs-testmeans", ["rs-testmeans_adgs-station-mock"]]])
+
     console.log(
         "\n" +
         "Docker images by repository\n" +
         "###########################\n" +
-        JSON.stringify(Object.fromEntries(imagesByRepo), null, 2)
+        jsonStringifyMap(imagesByRepo)
     )
     console.log(
         "\n" +
         "Docker images by update date\n" +
         "############################\n" +
-        JSON.stringify(Object.fromEntries(imagesByDate), null, 2)
+        jsonStringifyMap(imagesByDate)
     )
     return imagesByRepo
 }
@@ -256,25 +270,14 @@ async function cleanRepo(
                 package_name: image,
                 org
             })
-        for await (const {data: versions} of versionPages) {
-
-            //// TEMP !!!!!!!!!!!!!!!!!!!!!
-            // if (allManifests.size > 5) break
-
+        for await (const {data: versions} of versionPages)
+        {
             // For each docker image version (=manifest)
             await Promise.all(versions.map(async (manifest) =>
             {
                 const manifestSha = manifest.name // sha256
                 const manifestId = manifest.id // package version id
                 const manifestTags = manifest.metadata.container.tags // docker image tags
-
-
-                //// TEMP !!!!!!!!!!!!!!!!!!!!!
-                // if (allManifests.size > 5) return
-
-
-                const ref = (manifestTags.length == 0) ? `@${manifestSha}` : `:${manifestTags[0]}`
-                console.log(`Read child manifests for ${image}${ref}`)
 
                 // Try to get the child manifests from the cache
                 const cached = cacheAllManifests.get(image).get(manifestSha)
@@ -285,6 +288,9 @@ async function cleanRepo(
                 // Else retrieve them from remote
                 else
                 {
+                    const ref = (manifestTags.length == 0) ? `@${manifestSha}` : `:${manifestTags[0]}`
+                    console.log(`Read child manifests for ${image}${ref}`)
+
                     allManifests.set(manifestSha, {"id": manifestId, "childrenSha": []})
                     const inspect = await inspectManifest(token, image, manifestSha)
                     if ("manifests" in inspect) {
@@ -347,7 +353,7 @@ async function cleanRepo(
         }
 
         // Call the recursive function for all first level manifests we keep
-        for (const keepManifests of [existingTags, oldTags, recentUntagged]) {
+        for (const keepManifests of [existingTags, recentUntagged]) { // NOTE: don't keep oldTags
             for (const manifest of keepManifests.get(image)) {
                 cleanManifests(manifest.name)
             }
@@ -383,31 +389,28 @@ async function cleanRepo(
 
     console.log(
         "\n" +
+        "These old tags were deleted\n" +
+        "###########################\n" +
+        jsonStringifyMap(logOldTags)
+    )
+    console.log(
+        "\n" +
         "These are child manifests of versions we keep (don't delete them !)\n" +
         "###################################################################\n" +
-        JSON.stringify(Object.fromEntries(logChildManifest), null, 2)
+        jsonStringifyMap(logChildManifest)
     )
     console.log(
         "\n" +
         "These have no tags but are too recent to be deleted\n" +
         "###################################################\n" +
-        JSON.stringify(Object.fromEntries(logRecentUntagged), null, 2)
-    )
-    console.log(
-        "\n" +
-        "We keep these old tags but we could delete them\n" +
-        "###############################################\n" +
-        JSON.stringify(Object.fromEntries(logOldTags), null, 2)
+        jsonStringifyMap(logRecentUntagged)
     )
     console.log(
         "\n" +
         "We keep these recent tags\n" +
         "#########################\n" +
-        JSON.stringify(Object.fromEntries(logExistingTags), null, 2)
+        jsonStringifyMap(logExistingTags)
     )
-
-    //// TEMP !!!!!!!!!!!!!!!!!!!!!
-    throw Error("test !")
 } // function cleanRepo
 
 /////////////

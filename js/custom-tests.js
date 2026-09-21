@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Run javascript functions from imported module
+// Test javascript functions from imported module
 
 ////////////
 // Import //
@@ -55,9 +55,11 @@ imagesByRepo.forEach((images, repo) => mod.readCacheManifests(images, cacheAllMa
 if (runParallel)
 {
     // Test values
-    const repo = "rs-dpr-service"
+    const repo = "rs-testmeans"
     let images = imagesByRepo.get(repo)
-    images = [images[0], images[1]]
+    images = [images[0]]
+    // images = [images[0], images[1]]
+    // images = ["rs-dpr-service_py3.11.7-2024.5.2"]
 
     // Run cleaning
     try {
@@ -112,7 +114,7 @@ else
             lastImageRun = value[1]
             const repo = lastRepoRun
             const images = [lastImageRun]
-            console.log(`\n## Clean ${repo} images: ${images} ##\n`)
+            console.log(`\n## Clean ${repo} images: ${images} ##\n`)
             await mod.cleanRepo(appOctokit, cacheAllManifests, repo, images, true)
         }
 
@@ -122,17 +124,12 @@ else
     }
 
     // Save the cache, even in case of error
-    finally {
-        if (!existsSync(cacheDir)) {
-            mkdirSync(cacheDir)
-        }
+    finally
+    {
+        // Write cache of manifest lists
+        mod.writeCacheManifests(cacheAllManifests, cacheDir)
 
-        cacheAllManifests.forEach((cached, image) => {
-            const cacheFile = join(cacheDir, format(mod.cacheManifestTemplate, mod.removeSpecial(image)))
-            const str = JSON.stringify(Object.fromEntries(cached))
-            writeFileSync(cacheFile, str, "utf8")
-        })
-
+        // Write cache of the last repo/image that was run and failed
         const cacheFile = join(cacheDir, mod.cacheLastRun)
         const str = JSON.stringify([lastRepoRun, lastImageRun])
         writeFileSync(cacheFile, str, "utf8")
