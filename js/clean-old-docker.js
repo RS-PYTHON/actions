@@ -37,13 +37,13 @@ const removeOldTagsFor = await getRemoveOldTagsFor()
 ///////////////////////
 
 // JSON.stringify on a Map
-function jsonStringifyMap(map) {
+function jsonStringifyMap(map, space=2) {
     return JSON.stringify(map, (key, value) => {
         if (value instanceof Map) {
             return Object.fromEntries(value);
         }
         return value;
-    }, 2);
+    }, space);
 }
 
 // Add key/value to a map of arrays
@@ -417,4 +417,4 @@ async function cleanRepo(
 // Exports //
 /////////////
 
-export default {cacheLastRun, cleanRepo, getImages, readCacheManifests, writeCacheManifests}
+export default {cacheLastRun, cleanRepo, getImages, jsonStringifyMap, readCacheManifests, writeCacheManifests}
