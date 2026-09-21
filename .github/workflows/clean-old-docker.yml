@@ -23,7 +23,7 @@ on:
   # push: # on every push, for testing only
 
 env:
-  RUN_PARALLEL: false
+  RUN_PARALLEL: false # it may be better to run in sequential if we have "rate limit" http errors
   DRY_RUN: false # if true: don't delete images for real, only print log
   CACHE_KEY: cache-clean-old-docker # name of the github ci/cd cache where we save the manifest lists
   CACHE_DIR: ./js/cache # where this cache is saved on local
