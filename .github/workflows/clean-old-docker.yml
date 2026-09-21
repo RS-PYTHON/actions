@@ -12,10 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Clean old GHCR Docker images
+name: Clean old Docker images
 
+# Run workflow only for ...
 on:
-  push
+  schedule: # works only on the default branch !
+    - cron: "*/5 * * * *"
+  #   # - cron: "0 0 * * *" # every day at 00:00
+  workflow_dispatch: # manual trigger
+  # push # on every push, for testing only
 
 env:
   RUN_PARALLEL: true
