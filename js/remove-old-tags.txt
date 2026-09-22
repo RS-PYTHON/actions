@@ -29,9 +29,6 @@ rs-dpr-service_py3.11.7-2026.1.2
 rs-dpr-service_py3.13.12-2026.1.2
 rs-dpr-service_py3.13.12-2026.3.0
 rs-dpr-service_py3.13.12-2026.7.0
-rs-dpr-servicepy3.11.7-2024.5.2
-rs-dpr-servicepy3.11.7-2026.1.2
-rs-dpr-servicepy3.13.12-2026.1.2
 
 # rs-server
 dask/staging/k8s

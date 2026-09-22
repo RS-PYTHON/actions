@@ -17,10 +17,24 @@ name: Clean old Docker images
 # Run workflow only for ...
 on:
   workflow_dispatch: # manual trigger
+    inputs:
+      run_parallel:
+        description: Run in parallel # You can run in sequential in case of "rate limit" errors
+        type: choice
+        options:
+          - true
+          - false
+  push: # on every push, for testing only
+
+  # NOTE: the schedule cron job does not seem to work,
+  # See: https://github.com/orgs/community/discussions/206019, https://github.com/orgs/community/discussions/206134
+  # In the meantime you can trigger it manually locally every e.g. 20 minutes by using:
+  # gh auth login
+  # gh auth status
+  # while true; do gh workflow run clean-old-docker.yml --repo RS-PYTHON/actions; sleep 1200; done
   schedule: # works only on the default branch !
     - cron: "*/5 * * * *" # every 5 minutes
     - cron: "0 0 * * *" # every day at 00:00
-  # push: # on every push, for testing only
 
 env:
   RUN_PARALLEL: false # it may be better to run in sequential if we have "rate limit" http errors
@@ -57,7 +71,9 @@ jobs:
             // [{"repo": repo1, "images": [img1, img2]}, {"repo": repo2, "images": [img3, img4]}]
             // that will be used in the below matrix
             const jobs = []
-            imagesByRepo.forEach((value, key) => {jobs.push({"repo": key, "images": value})})
+            if (${{ env.RUN_PARALLEL }} == "true") {
+              imagesByRepo.forEach((value, key) => {jobs.push({"repo": key, "images": value})})
+            }
 
             // Write results to github outputs
             const fs = require("fs")

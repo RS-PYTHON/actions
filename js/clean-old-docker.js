@@ -310,11 +310,16 @@ async function cleanRepo(
                         recentUntagged.get(image).push(manifest)
                         logRecentUntagged.get(image).push(manifestSha)
                     }
-                // Else check if the tag corresponds to a git tag or branch
                 } else {
                     const logId = `${manifestTags.join(",")} (${manifestSha})`
+
+                    // Else check if...
                     if (
+                        // The manifest is old enough
+                        (new Date(manifest.updated_at) < lastWeek) &&
+                        // We wand to remove od tags for this images
                         (removeOldTagsFor.includes(image)) &&
+                        // The manifest tag does not correspond to a git tag or branch
                         (manifestTags.filter(value => repoBranchesAndTags.includes(value)).length == 0)
                     ) {
                         oldTags.get(image).push(manifest)
