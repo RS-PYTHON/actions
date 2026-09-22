@@ -52,24 +52,24 @@ rs-testmeans_lta-station-mock
 rs-testmeans_prip-station-mock
 
 # rs-workflow-env
-dask/cpm/k8s
-dask/cpm2/k8s
-dask/cpm2/local
-dask/cpm2/localcluster
-dask/cpm3/k8s
-dask/cpm3/local
-dask/cpm3/localcluster
-dask/l0/k8s
-dask/l0/local
-dask/l0/localcluster
+# NOT dask/cpm/k8s
+# NOT dask/cpm2/k8s
+# NOT dask/cpm2/local
+# NOT dask/cpm2/localcluster
+# NOT dask/cpm3/k8s
+# NOT dask/cpm3/local
+# NOT dask/cpm3/localcluster
+# NOT dask/l0/k8s
+# NOT dask/l0/local
+# NOT dask/l0/localcluster
 dask/mockup/k8s
 dask/mockup/local
-dask/s1ard/k8s
-dask/s1ard/local
-dask/s1ard/localcluster
-dask/s3olci/k8s
-dask/s3olci/local
-dask/s3olci/localcluster
+# NOT dask/s1ard/k8s
+# NOT dask/s1ard/local
+# NOT dask/s1ard/localcluster
+# NOT dask/s3olci/k8s
+# NOT dask/s3olci/local
+# NOT dask/s3olci/localcluster
 # NOT prefecthq/prefect
 # NOT rs-workflow-env-cpm
 # NOT rs-workflow-env-jupyter
