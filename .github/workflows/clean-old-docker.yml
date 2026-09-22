@@ -17,30 +17,23 @@ name: Clean old Docker images
 # Run workflow only for ...
 on:
   workflow_dispatch: # manual trigger
-    inputs:
-      run_parallel:
-        description: Run in parallel # You can run in sequential in case of "rate limit" errors
-        type: choice
-        options:
-          - true
-          - false
-  push: # on every push, for testing only
+  # push: # on every push, for testing only
 
   # NOTE: the schedule cron job does not seem to work,
   # See: https://github.com/orgs/community/discussions/206019, https://github.com/orgs/community/discussions/206134
-  # In the meantime you can trigger it manually locally every e.g. 20 minutes by using:
+  # In the meantime you can trigger it manually locally every e.g. 30 minutes by using:
   # gh auth login
   # gh auth status
-  # while true; do gh workflow run clean-old-docker.yml --repo RS-PYTHON/actions; sleep 1200; done
+  # while true; do gh workflow run clean-old-docker.yml --repo RS-PYTHON/actions; sleep 1800; done
   schedule: # works only on the default branch !
-    - cron: "*/5 * * * *" # every 5 minutes
     - cron: "0 0 * * *" # every day at 00:00
+    # - cron: "*/5 * * * *" # every 5 minutes
 
 env:
-  RUN_PARALLEL: false # it may be better to run in sequential if we have "rate limit" http errors
+  RUN_PARALLEL: true # it may be better to run in sequential if we have "rate limit" http errors
   DRY_RUN: false # if true: don't delete images for real, only print log
   CACHE_KEY: cache-clean-old-docker # name of the github ci/cd cache where we save the manifest lists
-  CACHE_DIR: ./js/cache # where this cache is saved on local
+  CACHE_DIR: ./js/cache # where this cache is saved on local disk
   PRINT_CACHE: false # print cache contents, before and after processing
 
 jobs:
@@ -48,6 +41,7 @@ jobs:
     name: Get all docker images
     runs-on: ubuntu-latest
     outputs:
+      run_parallel: ${{ env.RUN_PARALLEL }}
       imagesByRepo: ${{ steps.get-images.outputs.imagesByRepo }}
       jobs: ${{ steps.get-images.outputs.jobs }}
     steps:
@@ -71,9 +65,7 @@ jobs:
             // [{"repo": repo1, "images": [img1, img2]}, {"repo": repo2, "images": [img3, img4]}]
             // that will be used in the below matrix
             const jobs = []
-            if (${{ env.RUN_PARALLEL }} == "true") {
-              imagesByRepo.forEach((value, key) => {jobs.push({"repo": key, "images": value})})
-            }
+            imagesByRepo.forEach((value, key) => {jobs.push({"repo": key, "images": value})})
 
             // Write results to github outputs
             const fs = require("fs")
@@ -84,6 +76,7 @@ jobs:
     name: Clean from ${{ matrix.job.repo }}
     runs-on: ubuntu-latest
     needs: get-images
+    if: ${{ needs.get-images.outputs.run_parallel == 'true' }}
     permissions: # to remove old cache
       actions: write
       contents: read
@@ -92,18 +85,15 @@ jobs:
         job: ${{ fromJSON(needs.get-images.outputs.jobs) }}
       fail-fast: false
     steps:
-      - if: ${{ env.RUN_PARALLEL == 'true' }}
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - if: ${{ env.RUN_PARALLEL == 'true' }}
-        name: Restore cache
+      - name: Restore cache
         uses: actions/cache/restore@v6
         with:
           key: ${{ env.CACHE_KEY }}-${{ matrix.job.repo }}
           path: ${{ env.CACHE_DIR }}/**
 
-      - if: ${{ env.RUN_PARALLEL == 'true' }}
-        name: Clean ${{ matrix.job.repo }} images
+      - name: Clean ${{ matrix.job.repo }} images
         env:
           GITHUB_PAT: ${{ secrets.CLEAN_DOCKER_IMAGES }} # github pat with delete:packages,read:packages
         uses: actions/github-script@v9 # run javascript
@@ -136,38 +126,37 @@ jobs:
                 mod.writeCacheManifests(cacheAllManifests, cacheDir)
             }
 
-      - if: ${{ always() && (env.RUN_PARALLEL == 'true') }}
-        name: Remove old cache
+      - name: Remove old cache
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh cache delete ${{ env.CACHE_KEY }}-${{ matrix.job.repo }}
-      - if: ${{ always() && (env.RUN_PARALLEL == 'true') }}
-        name: Save new cache
+        run: gh cache delete ${{ env.CACHE_KEY }}-${{ matrix.job.repo }} || true
+      - name: Save new cache
+        if: always()
         uses: actions/cache/save@v6
         with:
           key: ${{ env.CACHE_KEY }}-${{ matrix.job.repo }}
           path: ${{ env.CACHE_DIR }}/**
 
+  # NOTE from Julien: not sure this whole sequential job is useful. We could remove it.
   clean-repos-sequential:
     name: Clean all (sequential)
     runs-on: ubuntu-latest
     needs: get-images
+    if: ${{ needs.get-images.outputs.run_parallel != 'true' }}
     permissions: # to remove old cache
       actions: write
       contents: read
     steps:
-      - if: ${{ env.RUN_PARALLEL != 'true' }}
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - if: ${{ env.RUN_PARALLEL != 'true' }}
-        name: Restore cache
+      - name: Restore cache
         uses: actions/cache/restore@v6
         with:
           key: ${{ env.CACHE_KEY }}-sequential
           path: ${{ env.CACHE_DIR }}/**
 
-      - if: ${{ env.RUN_PARALLEL != 'true' }}
-        name: Clean all
+      - name: Clean all
         env:
           GITHUB_PAT: ${{ secrets.CLEAN_DOCKER_IMAGES }} # github pat with delete:packages,read:packages
         uses: actions/github-script@v9 # run javascript
@@ -254,13 +243,13 @@ jobs:
                 writeFileSync(cacheFile, str, "utf8")
             }
 
-      - if: ${{ always() && (env.RUN_PARALLEL != 'true') }}
-        name: Remove old cache
+      - name: Remove old cache
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh cache delete ${{ env.CACHE_KEY }}-sequential
-      - if: ${{ always() && (env.RUN_PARALLEL != 'true') }}
-        name: Save new cache
+        run: gh cache delete ${{ env.CACHE_KEY }}-sequential || true
+      - name: Save new cache
+        if: always()
         uses: actions/cache/save@v6
         with:
           key: ${{ env.CACHE_KEY }}-sequential
