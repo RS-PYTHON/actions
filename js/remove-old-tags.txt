@@ -71,6 +71,6 @@ dask/s3olci/k8s
 dask/s3olci/local
 dask/s3olci/localcluster
 # NOT prefecthq/prefect
-rs-workflow-env-cpm
-rs-workflow-env-jupyter
-rs-workflow-env-testcpm
+# NOT rs-workflow-env-cpm
+# NOT rs-workflow-env-jupyter
+# NOT rs-workflow-env-testcpm
