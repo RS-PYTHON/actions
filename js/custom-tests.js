@@ -18,10 +18,9 @@
 // Import //
 ////////////
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
-import { format } from 'util'
+import { readFileSync, writeFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
+import { dirname, join } from "node:path"
 
 const { default: mod } = await import('./clean-old-docker.js')
 
@@ -76,8 +75,8 @@ if (runParallel)
 else
 {
     // Read from cache the last repo/image that was run and failed on a previous attempt
-    var lastRepoRun = ""
-    var lastImageRun = ""
+    let lastRepoRun = ""
+    let lastImageRun = ""
     try {
         const cacheFile = join(cacheDir, mod.cacheLastRun)
         const str = readFileSync(cacheFile, "utf8")
@@ -88,10 +87,10 @@ else
     catch {}
 
     // The first repo/image to process is the last that failed
-    var firstRepoImage = 0
+    let firstRepoImage = 0
 
     // Convert map {repo: [image]} to array [[repo, image]]
-    var i = 0
+    let i = 0
     const repoAndImages = []
     imagesByRepo.forEach((images, repo) => {
         images.forEach(image => {

@@ -30,7 +30,6 @@ on:
     # - cron: "*/5 * * * *" # every 5 minutes
 
 env:
-  RUN_PARALLEL: true # it may be better to run in sequential if we have "rate limit" http errors
   DRY_RUN: false # if true: don't delete images for real, only print log
   CACHE_KEY: cache-clean-old-docker # name of the github ci/cd cache where we save the manifest lists
   CACHE_DIR: ./js/cache # where this cache is saved on local disk
@@ -41,7 +40,6 @@ jobs:
     name: Get all docker images
     runs-on: ubuntu-latest
     outputs:
-      run_parallel: ${{ env.RUN_PARALLEL }}
       imagesByRepo: ${{ steps.get-images.outputs.imagesByRepo }}
       jobs: ${{ steps.get-images.outputs.jobs }}
     steps:
@@ -76,7 +74,6 @@ jobs:
     name: Clean from ${{ matrix.job.repo }}
     runs-on: ubuntu-latest
     needs: get-images
-    if: ${{ needs.get-images.outputs.run_parallel == 'true' }}
     permissions: # to remove old cache
       actions: write
       contents: read
@@ -136,121 +133,4 @@ jobs:
         uses: actions/cache/save@v6
         with:
           key: ${{ env.CACHE_KEY }}-${{ matrix.job.repo }}
-          path: ${{ env.CACHE_DIR }}/**
-
-  # NOTE from Julien: not sure this whole sequential job is useful. We could remove it.
-  clean-repos-sequential:
-    name: Clean all (sequential)
-    runs-on: ubuntu-latest
-    needs: get-images
-    if: ${{ needs.get-images.outputs.run_parallel != 'true' }}
-    permissions: # to remove old cache
-      actions: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Restore cache
-        uses: actions/cache/restore@v6
-        with:
-          key: ${{ env.CACHE_KEY }}-sequential
-          path: ${{ env.CACHE_DIR }}/**
-
-      - name: Clean all
-        env:
-          GITHUB_PAT: ${{ secrets.CLEAN_DOCKER_IMAGES }} # github pat with delete:packages,read:packages
-        uses: actions/github-script@v9 # run javascript
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            readFileSync = require("node:fs").readFileSync
-            writeFileSync = require("node:fs").writeFileSync
-            join = require("node:path").join
-            const cacheDir = "${{ env.CACHE_DIR }}"
-
-            // Init octokit, see https://octokit.github.io/rest.js
-            const appOctokit = getOctokit(process.env.GITHUB_PAT)
-
-            // Import custom module
-            const { default: mod } = await import('${{ github.workspace }}/js/clean-old-docker.js')
-
-            // Get all docker images, sorted by repository
-            let imagesByRepo = ${{ needs.get-images.outputs.imagesByRepo }}
-            imagesByRepo = new Map(Object.entries(imagesByRepo))
-            console.log(`\nimagesByRepo:\n${mod.jsonStringifyMap(imagesByRepo)}\n`)
-
-            // Read cache of manifest lists
-            const cacheAllManifests = new Map()
-            imagesByRepo.forEach((images, repo) => mod.readCacheManifests(images, cacheAllManifests, cacheDir))
-
-            // Read from cache the last repo/image that was run and failed on a previous attempt
-            var lastRepoRun = ""
-            var lastImageRun = ""
-            try {
-                const cacheFile = join(cacheDir, mod.cacheLastRun)
-                const str = readFileSync(cacheFile, "utf8")
-                const cached = JSON.parse(str)
-                lastRepoRun = cached[0]
-                lastImageRun = cached[1]
-            }
-            catch {}
-
-            // The first repo/image to process is the last that failed
-            var firstRepoImage = 0
-
-            // Convert map {repo: [image]} to array [[repo, image]]
-            var i = 0
-            const repoAndImages = []
-            imagesByRepo.forEach((images, repo) => {
-                images.forEach(image => {
-                    repoAndImages.push([repo, image])
-
-                    // Check if this is the last that failed
-                    if ((repo == lastRepoRun) && (image == lastImageRun)) {
-                        firstRepoImage = i
-                    }
-                    ++i
-                })
-            })
-
-            // Run cleaning on each repo/image
-            try {
-                for (i = 0; i < repoAndImages.length; ++i)
-                {
-                    const value = repoAndImages[(i + firstRepoImage) % repoAndImages.length]
-                    lastRepoRun = value[0]
-                    lastImageRun = value[1]
-                    const repo = lastRepoRun
-                    const images = [lastImageRun]
-                    console.log(`\n## Clean ${repo} images: ${images} ##\n`)
-                    await mod.cleanRepo(appOctokit, cacheAllManifests, repo, images, ${{ env.DRY_RUN }})
-                }
-
-                // If no repo failed, reset these variables
-                lastRepoRun = ""
-                lastImageRun = ""
-            }
-
-            // Save the cache, even in case of error
-            finally
-            {
-                // Write cache of manifest lists
-                mod.writeCacheManifests(cacheAllManifests, cacheDir)
-
-                // Write cache of the last repo/image that was run and failed
-                const cacheFile = join(cacheDir, mod.cacheLastRun)
-                const str = JSON.stringify([lastRepoRun, lastImageRun])
-                writeFileSync(cacheFile, str, "utf8")
-            }
-
-      - name: Remove old cache
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh cache delete ${{ env.CACHE_KEY }}-sequential || true
-      - name: Save new cache
-        if: always()
-        uses: actions/cache/save@v6
-        with:
-          key: ${{ env.CACHE_KEY }}-sequential
           path: ${{ env.CACHE_DIR }}/**
