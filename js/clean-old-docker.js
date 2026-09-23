@@ -14,10 +14,10 @@
 
 // Clean old Docker image versions from the GitHub container registry (GHCR)
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { format } from 'util'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { format } from "node:util"
 
 const org = "RS-PYTHON"
 const package_type = "container"
@@ -29,12 +29,24 @@ const cacheManifestTemplate = "cache_manifest_%s"
 const lastWeek = new Date()
 lastWeek.setDate(lastWeek.getDate() - 7)
 
+// File to write the github ci/cd summary
+const ghSummaryFile = process.env.GITHUB_STEP_SUMMARY
+if (ghSummaryFile) {appendFileSync(ghSummaryFile, "```\n", "utf8")} // start writing markdown block to gh summary
+
 // Remove docker image versions with old git tags, only for these images
 const removeOldTagsFor = await getRemoveOldTagsFor()
 
 ///////////////////////
 // Utility functions //
 ///////////////////////
+
+// Write to console.log and the github ci/cd summary
+function appendToSummary(str) {
+    console.log(str)
+    if (ghSummaryFile) {
+        appendFileSync(ghSummaryFile, str + "\n", "utf8")
+    }
+}
 
 // JSON.stringify on a Map
 function jsonStringifyMap(map, space=2) {
@@ -168,7 +180,7 @@ async function getImages(
     })
 
     // Sort maps
-    imagesByRepo = new Map([...imagesByRepo.entries()].sort()) // sort by keys
+    imagesByRepo = new Map([...imagesByRepo.entries()].sort((a, b) => a[0].localeCompare(b[0]))) // sort by keys
     imagesByRepo.forEach((value, key) => { // sort values, which are arrays
         imagesByRepo.set(key, value.toSorted())
     })
@@ -180,13 +192,13 @@ async function getImages(
     // Hard test a single repo
     // imagesByRepo = new Map([["rs-testmeans", ["rs-testmeans_adgs-station-mock"]]])
 
-    console.log(
+    appendToSummary(
         "\n" +
         "Docker images by repository\n" +
         "###########################\n" +
         jsonStringifyMap(imagesByRepo)
     )
-    console.log(
+    appendToSummary(
         "\n" +
         "Docker images by update date\n" +
         "############################\n" +
@@ -212,8 +224,7 @@ async function cleanRepo(
     await appOctokit.paginate(appOctokit.rest.repos.listBranches, {owner: org, repo}).then(branches => {
         branches.forEach(branch => {
             const branchName = removeSpecial(branch.name)
-            repoBranchesAndTags.push(branchName)
-            repoBranchesAndTags.push(branchName + "-cache")
+            repoBranchesAndTags.push(branchName, branchName + "-cache")
     })})
     await appOctokit.paginate(appOctokit.rest.repos.listTags, {owner: org, repo}).then(tags => {
         tags.forEach(tag => {
@@ -371,12 +382,12 @@ async function cleanRepo(
         )
 
         if (allManifests.size == 0) {
-            console.log(`Nothing to delete for ${image}`)
+            appendToSummary(`Nothing to delete for ${image}`)
         }
         // Delete remaining manifests. Iterate over (first level sha / package version id)
         else {
             await Promise.all([...allManifests].flatMap(async ([manifestSha, {id: manifestId}]) => {
-                console.log(`Delete ${image}@${manifestSha} (${manifestId})`)
+                appendToSummary(`Delete ${image}@${manifestSha} (${manifestId})`)
                 if (!dryRun) {
                     await appOctokit.rest.packages.deletePackageVersionForOrg({
                         package_type,
