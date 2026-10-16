@@ -31,6 +31,7 @@ jobs:
       caller-repository: ${{ github.repository }}
       caller-ref: ${{ github.ref }}
       caller-ref_name: ${{ github.ref_name }}
+      sonar-cov-exclusions: '**' # no unit tests in this project: exclude all files from the coverage metrics
     secrets:
       SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
