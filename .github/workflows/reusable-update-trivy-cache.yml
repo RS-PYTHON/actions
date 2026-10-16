@@ -1,0 +1,107 @@
+# Copyright 2023-2026 Airbus, CS Group
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Update the Trivy cache (reusable workflow)
+
+# Download the Trivy databases once per day and save them in the GitHub cache of the calling repository,
+# with the cache key and path expected by aquasecurity/trivy-action, to avoid the TOOMANYREQUESTS errors
+# from the registries when every Trivy scan downloads the databases itself.
+# The Trivy scans then use the restore-trivy-cache action to restore them and skip the databases update.
+# See: https://github.com/aquasecurity/trivy-action#updating-caches-in-the-default-branch
+#
+# The cache must be saved from the default branch to be readable from all the other branches,
+# so call this workflow from a scheduled workflow (that runs only on the default branch).
+
+on:
+  workflow_call: # reusable workflow
+
+env:
+  # Same path and key prefix as aquasecurity/trivy-action, don't change them
+  CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+  CACHE_KEY_PREFIX: cache-trivy-
+  # Registries tried in this order, until one of them works
+  TRIVY_DB_REPOSITORIES: >-
+    public.ecr.aws/aquasecurity/trivy-db:2
+    mirror.gcr.io/aquasec/trivy-db:2
+    ghcr.io/aquasecurity/trivy-db:2
+  TRIVY_JAVA_DB_REPOSITORIES: >-
+    public.ecr.aws/aquasecurity/trivy-java-db:1
+    mirror.gcr.io/aquasec/trivy-java-db:1
+    ghcr.io/aquasecurity/trivy-java-db:1
+
+jobs:
+  update-trivy-cache:
+    runs-on: ubuntu-latest
+    name: Update the Trivy cache
+    permissions:
+      actions: write # to delete the old caches
+    steps:
+      - name: Setup oras
+        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Download and extract the databases
+        run: |
+          set -euo pipefail
+
+          # Pull an OCI artifact from the first registry that works, and extract it.
+          # Usage: download <archive name> <destination dir> <registry1> <registry2> ...
+          download() {
+            local archive="$1" dest="$2"
+            shift 2
+            mkdir -p "$dest"
+            for repo in "$@"; do
+              echo "Download $archive from $repo"
+              if oras pull --no-tty "$repo"; then
+                tar -xzf "$archive" -C "$dest"
+                rm -f "$archive"
+                return 0
+              fi
+              echo "::warning::Failed to download $archive from $repo"
+            done
+            echo "::error::Failed to download $archive from all the registries"
+            return 1
+          }
+
+          download db.tar.gz "$CACHE_DIR/db" $TRIVY_DB_REPOSITORIES
+          download javadb.tar.gz "$CACHE_DIR/java-db" $TRIVY_JAVA_DB_REPOSITORIES
+          ls -lR "$CACHE_DIR"
+        shell: bash
+
+      - name: Save the databases in the cache
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: ${{ env.CACHE_KEY_PREFIX }}${{ steps.date.outputs.date }}
+
+      # Each cache takes ~1 GB, only keep the last one so we don't exceed the cache quota of the repository
+      - name: Delete the old caches
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          LAST_KEY: ${{ env.CACHE_KEY_PREFIX }}${{ steps.date.outputs.date }}
+        run: |
+          set -euo pipefail
+          for key in $(gh cache list --key "$CACHE_KEY_PREFIX" --limit 1000 --json key --jq '.[].key' | sort -u); do
+            if [[ "$key" != "$LAST_KEY" ]]; then
+              echo "Delete cache: $key"
+              gh cache delete "$key" --succeed-on-no-caches
+            fi
+          done
+        shell: bash

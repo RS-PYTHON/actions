@@ -1,0 +1,57 @@
+# Copyright 2023-2026 Airbus, CS Group
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: restore-trivy-cache
+description: >
+  Restore the Trivy databases from the GitHub cache, saved every day by the reusable-update-trivy-cache.yml workflow,
+  and skip the databases update in the next aquasecurity/trivy-action steps of the job.
+  Call it before these steps, and set their 'cache' input to false so they don't save outdated databases in the cache.
+  If the cache doesn't exist yet, the Trivy steps will download the databases themselves.
+
+outputs:
+  cache-matched-key:
+    description: Key of the restored cache, or empty if no cache was found
+    value: ${{ steps.restore.outputs.cache-matched-key }}
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: Get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Restore the Trivy databases from the cache
+      id: restore
+      uses: actions/cache/restore@v6
+      with:
+        # Same path and key as aquasecurity/trivy-action and the reusable-update-trivy-cache.yml workflow
+        path: ${{ github.workspace }}/.cache/trivy
+        key: cache-trivy-${{ steps.date.outputs.date }}
+        restore-keys: cache-trivy-
+
+    - name: Skip the Trivy databases update
+      env:
+        CACHE_MATCHED_KEY: ${{ steps.restore.outputs.cache-matched-key }}
+      run: |
+        if [[ -n "$CACHE_MATCHED_KEY" ]]; then
+          echo "Use the Trivy databases from the cache: $CACHE_MATCHED_KEY"
+          echo "TRIVY_SKIP_DB_UPDATE=true" >> $GITHUB_ENV
+          echo "TRIVY_SKIP_JAVA_DB_UPDATE=true" >> $GITHUB_ENV
+        else
+          echo "::warning::The Trivy databases are not in the cache, they will be downloaded." \
+            "Run the 'Update the Trivy cache' workflow from the default branch to fix this."
+        fi
+      shell: bash
