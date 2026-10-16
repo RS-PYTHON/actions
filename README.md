@@ -15,11 +15,12 @@ repository factorises its common parts:
   the build and publication workflows,
 - maintenance workflows of the GitHub organisation.
 
-### Reusable workflow
+### Reusable workflows
 
 | Workflow | Description |
 |---|---|
 | [reusable-check-quality.yml](.github/workflows/reusable-check-quality.yml) | Check the code quality of the calling repository: [pre-commit](https://pre-commit.com/), license headers ([SkyWalking Eyes](https://github.com/apache/skywalking-eyes)), [Trivy](https://trivy.dev/) (vulnerabilities and misconfigurations), [Bandit](https://bandit.readthedocs.io/), [Flake8](https://flake8.pycqa.org/), [Mypy](https://mypy-lang.org/), [Pylint](https://pylint.readthedocs.io/), [Safety](https://safetycli.com/), [Pytest](https://docs.pytest.org/) with coverage, and [SonarQube Cloud](https://sonarcloud.io/) with its quality gate. |
+| [reusable-update-trivy-cache.yml](.github/workflows/reusable-update-trivy-cache.yml) | Download the [Trivy](https://trivy.dev/) databases and save them in the GitHub cache of the calling repository, so the Trivy scans don't download them each time (avoids the `TOOMANYREQUESTS` errors from the registries). |
 
 Usage, from the `.github/workflows/check-code-quality.yml` file of a repository:
 
@@ -39,6 +40,22 @@ jobs:
 The other inputs (Python and Poetry versions, directories covered by the tests, Sonar exclusions, tools whose errors
 are ignored...) are described in the workflow file.
 
+Every repository that runs Trivy scans (with `reusable-check-quality.yml`, `publish-docker` or directly) must also
+update its Trivy cache every day, from the `.github/workflows/update-trivy-cache.yml` file:
+
+```yaml
+on:
+  schedule: # works only on the default branch !
+    - cron: "30 0 * * *" # every day at 00:30
+  workflow_dispatch: # manual trigger
+
+jobs:
+  update-trivy-cache:
+    uses: RS-PYTHON/actions/.github/workflows/reusable-update-trivy-cache.yml@develop
+    permissions:
+      actions: write # to delete the old caches
+```
+
 ### Composite actions
 
 | Action | Description |
@@ -48,6 +65,7 @@ are ignored...) are described in the workflow file.
 | [get-image-tag](.github/actions/get-image-tag/action.yml) | Return the first Docker image tag that exists in a list, e.g. `does-not-exist,latest` returns `latest`. |
 | [get-repo-branch](.github/actions/get-repo-branch/action.yml) | Return the first branch of a git repository that exists in a list, e.g. `does-not-exist,develop` returns `develop`. |
 | [publish-docker](.github/actions/publish-docker/action.yml) | Build and push a Docker image, and scan it with Trivy. |
+| [restore-trivy-cache](.github/actions/restore-trivy-cache/action.yml) | Restore the Trivy databases saved by `reusable-update-trivy-cache.yml` and skip their update in the next Trivy steps (to call before `aquasecurity/trivy-action` with `cache: false`). |
 | [set-binary-env](.github/actions/set-binary-env/action.yml) | Set the variables of the publication of the Docker images from the git context: branch name, Docker tags, debug mode. |
 | [setup-poetry](.github/actions/setup-poetry/action.yml) | Install Python and Poetry. |
 | [tag-push-docker](.github/actions/tag-push-docker/action.yml) | Tag and push the temporary Docker images with their final tags, after the tests have passed. |
@@ -61,6 +79,7 @@ Usage: `uses: RS-PYTHON/actions/.github/actions/<action>@develop`.
 | [all-repos-check-quality.yml](.github/workflows/all-repos-check-quality.yml) | Run the code quality check on all the repositories of the organisation (manual trigger). |
 | [clean-old-docker.yml](.github/workflows/clean-old-docker.yml) | Delete the old Docker images of the GitHub Container Registry of the organisation (every day), with the scripts of the [js](js) folder. |
 | [check-code-quality.yml](.github/workflows/check-code-quality.yml) | Check the code quality of this repository. |
+| [update-trivy-cache.yml](.github/workflows/update-trivy-cache.yml) | Update the Trivy cache of this repository (every day). |
 
 ## Documentation
 

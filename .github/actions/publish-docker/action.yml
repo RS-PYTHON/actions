@@ -158,6 +158,9 @@ runs:
         # with other actions e.g. cloudposse/github-action-matrix-outputs-read
         DOCKER_BUILD_RECORD_UPLOAD: false
 
+    - name: Restore the Trivy databases from the cache
+      uses: RS-PYTHON/actions/.github/actions/restore-trivy-cache@develop
+
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
       env:
@@ -165,6 +168,7 @@ runs:
         TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
       with:
         version: v0.76.0
+        cache: false # restored by restore-trivy-cache
         # Pulled from the registry since the image is no longer loaded into the local Docker daemon.
         image-ref: ${{ env.latest_or_branch_image }}
         format: sarif

@@ -190,6 +190,9 @@ jobs:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
 
+      - name: Restore the Trivy databases from the cache
+        uses: RS-PYTHON/actions/.github/actions/restore-trivy-cache@develop
+
       - name: Scan local filesystem
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         env:
@@ -197,6 +200,7 @@ jobs:
           TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
         with:
           version: v0.76.0
+          cache: false # restored by restore-trivy-cache
           scan-type: fs
           ignore-unfixed: true
           format: table
@@ -211,6 +215,7 @@ jobs:
           TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
         with:
           version: v0.76.0
+          cache: false # restored by restore-trivy-cache
           scan-type: config
           ignore-unfixed: true
           format: table
