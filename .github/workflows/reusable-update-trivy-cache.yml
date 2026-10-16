@@ -83,6 +83,21 @@ jobs:
           ls -lR "$CACHE_DIR"
         shell: bash
 
+      # The cache of the day may already exist, e.g. if the workflow is run twice or if a Trivy scan
+      # saved it with older databases. Delete it, else the save step below fails.
+      - name: Delete the cache of the day
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          KEY: ${{ env.CACHE_KEY_PREFIX }}${{ steps.date.outputs.date }}
+        run: |
+          set -euo pipefail
+          for id in $(gh cache list --key "$KEY" --limit 1000 --json id,key --jq ".[] | select(.key == \"$KEY\") | .id"); do
+            echo "Delete cache: $KEY (id $id)"
+            gh cache delete "$id"
+          done
+        shell: bash
+
       - name: Save the databases in the cache
         uses: actions/cache/save@v6
         with:
@@ -98,10 +113,15 @@ jobs:
           LAST_KEY: ${{ env.CACHE_KEY_PREFIX }}${{ steps.date.outputs.date }}
         run: |
           set -euo pipefail
-          for key in $(gh cache list --key "$CACHE_KEY_PREFIX" --limit 1000 --json key --jq '.[].key' | sort -u); do
-            if [[ "$key" != "$LAST_KEY" ]]; then
-              echo "Delete cache: $key"
-              gh cache delete "$key" --succeed-on-no-caches
-            fi
+          # Keep the old caches if the new one could not be saved
+          if [[ -z "$(gh cache list --key "$LAST_KEY" --json key --jq ".[] | select(.key == \"$LAST_KEY\") | .key")" ]]; then
+            echo "::warning::The cache $LAST_KEY does not exist, keep the old caches"
+            exit 0
+          fi
+          gh cache list --key "$CACHE_KEY_PREFIX" --limit 1000 --json id,key \
+            --jq ".[] | select(.key != \"$LAST_KEY\") | \"\\(.id) \\(.key)\"" |
+          while read -r id key; do
+            echo "Delete cache: $key (id $id)"
+            gh cache delete "$id"
           done
         shell: bash
