@@ -167,7 +167,7 @@ runs:
         TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
       with:
-        version: v0.76.0
+        version: v0.76.1
         cache: false # restored by restore-trivy-cache
         # Pulled from the registry since the image is no longer loaded into the local Docker daemon.
         image-ref: ${{ env.latest_or_branch_image }}
