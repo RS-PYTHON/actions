@@ -32,7 +32,7 @@ on:
       python-version:
         description: Main python version (only for Python projects)
         type: string
-        default: 3.13.16
+        default: 3.13.18
       poetry-version:
         description: Poetry version (when applicable)
         type: string
