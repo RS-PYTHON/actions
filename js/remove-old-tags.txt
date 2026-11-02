@@ -24,6 +24,7 @@ rs-client-libraries_store
 # NOT dask/dask-gateway
 
 # rs-dpr-service
+rs-dpr-service_py3.13.18-2026.7.1
 rs-dpr-service_py3.13.16-2026.7.1
 rs-dpr-service_py3.11.7-2024.5.2
 rs-dpr-service_py3.11.7-2026.1.2

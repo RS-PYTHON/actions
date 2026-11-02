@@ -39,7 +39,7 @@ runs:
         elif [[ -n $INPUT_PYTHON_VERSION ]]; then
           python_version=$INPUT_PYTHON_VERSION
         else
-          python_version=3.13.16
+          python_version=3.13.18
         fi
 
         if [[ -n $POETRY_VERSION ]]; then
