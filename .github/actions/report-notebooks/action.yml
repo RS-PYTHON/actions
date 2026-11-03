@@ -1,0 +1,132 @@
+# Copyright 2023-2026 Airbus, CS Group
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: report-notebooks
+description: >
+  Report the notebooks executed by papermill (e.g. the rs-demo notebooks): the failed notebooks with their exact error,
+  in the job summary and in a pull request comment. Only one comment is kept per pull request and title: it is updated
+  by each new run.
+  The job needs the 'pull-requests: write' permission.
+
+inputs:
+  notebooks-dir:
+    description: Directory of the output notebooks written by papermill, see report_notebooks.py
+    required: true
+  outcome:
+    description: Outcome of the step that ran the notebooks, as 'steps.<id>.outcome'
+    required: false
+    default: ""
+  title:
+    description: Report title. There is one pull request comment per title.
+    required: false
+    default: rs-demo notebooks
+  artifact-url:
+    description: URL of the artifact of the executed notebooks, as the 'artifact-url' output of actions/upload-artifact
+    required: false
+    default: ""
+  pull-request:
+    description: >
+      Number of the pull request to comment. By default: the pull request that triggered the workflow, or else the
+      open pull request of the current branch. No comment if there is no such pull request.
+    required: false
+    default: ""
+  github-token:
+    description: Token used to comment the pull request
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  failed:
+    description: Number of failed notebooks
+    value: ${{ steps.report.outputs.failed }}
+
+runs:
+  using: "composite"
+  steps:
+
+    - id: report
+      name: Write the notebooks report
+      env:
+        NOTEBOOKS_DIR: ${{ inputs.notebooks-dir }}
+        OUTCOME: ${{ inputs.outcome }}
+        TITLE: ${{ inputs.title }}
+        ARTIFACT_URL: ${{ inputs.artifact-url }}
+        SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        RUN_NAME: "${{ github.workflow }} #${{ github.run_number }}"
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+      run: |
+        set -x
+        python3 "${GITHUB_ACTION_PATH}/report_notebooks.py" "${NOTEBOOKS_DIR}" \
+          --title "${TITLE}" \
+          --outcome "${OUTCOME}" \
+          --marker "<!-- report-notebooks: ${TITLE} -->" \
+          --commit "[\`${SHA:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${SHA})" \
+          --run-name "${RUN_NAME}" \
+          --run-url "${RUN_URL}" \
+          --artifact-url "${ARTIFACT_URL}" \
+          > "${RUNNER_TEMP}/notebooks-report.md" \
+          || { echo "::warning title=report-notebooks::Cannot write the notebooks report"; exit 0; } # never fail the job
+        cat "${RUNNER_TEMP}/notebooks-report.md" >> "${GITHUB_STEP_SUMMARY}"
+      shell: bash
+
+    - name: Comment the pull request
+      if: steps.report.outputs.failed != '' # if the report was written
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pull-request || github.event.pull_request.number }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
+        MARKER: "<!-- report-notebooks: ${{ inputs.title }} -->"
+      run: |
+        set -x
+
+        # The report must never fail the job
+        warn() {
+          echo "::warning title=report-notebooks::$1, see the report in the job summary"
+          exit 0
+        }
+
+        # Else find the open pull request of the current branch
+        if [[ -z "${PR_NUMBER}" ]]; then
+          PR_NUMBER=$(gh api -X GET "repos/${GITHUB_REPOSITORY}/pulls" \
+            -f head="${GITHUB_REPOSITORY_OWNER}:${BRANCH}" -f state=open --jq '.[0].number // empty') \
+            || warn "Cannot list the pull requests of the branch '${BRANCH}'"
+        fi
+        if [[ -z "${PR_NUMBER}" ]]; then
+          echo "No pull request to comment"
+          exit 0
+        fi
+
+        # Find the previous reports in the pull request comments
+        ids=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+          --jq '.[] | select(.user.type == "Bot" and (.body | startswith(env.MARKER))) | .id') \
+          || warn "Cannot read the comments of the pull request #${PR_NUMBER}"
+        read -r first_id other_ids <<< "$(echo ${ids})"
+
+        # Update the first report or create a new one
+        jq -n --rawfile body "${RUNNER_TEMP}/notebooks-report.md" '{body: $body}' > "${RUNNER_TEMP}/notebooks-report.json"
+        if [[ -n "${first_id}" ]]; then
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${first_id}" \
+            --input "${RUNNER_TEMP}/notebooks-report.json" --silent \
+            || warn "Cannot update the comment of the pull request #${PR_NUMBER}"
+        else
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --input "${RUNNER_TEMP}/notebooks-report.json" --silent \
+            || warn "Cannot comment the pull request #${PR_NUMBER}"
+        fi
+
+        # Remove the duplicates, e.g. from concurrent runs
+        for id in ${other_ids}; do
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" --silent || true
+        done
+      shell: bash
