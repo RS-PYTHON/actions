@@ -43,6 +43,7 @@ MAX_REPORT_LENGTH = 60000
 MAX_ERROR_LENGTH = 300  # in the table
 MAX_TRACEBACK_LINES = 80  # in the details
 MAX_TRACEBACK_LENGTH = 6000
+MAX_OUTPUT_LINES = 30  # of the cells that failed without traceback
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
@@ -92,7 +93,21 @@ def is_sys_exit_ok(output: dict) -> bool:
     return output.get("ename") == "SystemExit" and output.get("evalue", "") in ("", "0")
 
 
-def cell_error(cell: dict) -> tuple[str, list[str]] | None:
+def cell_context(cell: dict, title: str) -> list[str]:
+    """Return the source and the last outputs of a cell, to understand an error without traceback."""
+    source = cell.get("source", "")
+    lines = [f"# {title}:", *("".join(source) if isinstance(source, list) else source).splitlines()]
+    outputs = "".join(
+        "".join(text) if isinstance(text := output.get("text", ""), list) else text
+        for output in cell.get("outputs", [])
+        if output.get("output_type") == "stream"
+    ).splitlines()
+    if outputs:
+        lines += ["", "# Last outputs of the cell:", *outputs[-MAX_OUTPUT_LINES:]]
+    return lines
+
+
+def cell_error(cell: dict, cell_name: str) -> tuple[str, list[str]] | None:
     """Return the error of a cell as (error message, traceback), or None if the cell has no error."""
     errors = [output for output in cell.get("outputs", []) if output.get("output_type") == "error"]
     for output in errors:
@@ -103,7 +118,7 @@ def cell_error(cell: dict) -> tuple[str, list[str]] | None:
 
     # Error raised without an error output
     if not errors and cell.get("metadata", {}).get("papermill", {}).get("exception") is True:
-        return "CellExecutionError", []
+        return "The cell failed without an error output, see its details", cell_context(cell, f"Source of {cell_name}")
     return None
 
 
@@ -113,11 +128,11 @@ def read_cell_error(notebook: dict) -> tuple[str, str, list[str]] | None:
     or None if the notebook has no error. Same logic as papermill.execute.raise_for_execution_errors.
     """
     for cell_name, cell in code_cells(notebook):
-        if error := cell_error(cell):
+        if error := cell_error(cell, cell_name):
             return error[0], cell_name, error[1]
 
-    if notebook.get("metadata", {}).get("papermill", {}).get("exception") is True:
-        return "Unknown papermill exception", "", []
+    # Note: papermill also sets the notebook 'exception' metadata when a cell calls sys.exit(0), e.g. to skip the end of
+    # the notebook, but it is not an error.
     return None
 
 
@@ -134,9 +149,7 @@ def last_started_cell(notebook: dict) -> tuple[str, list[str]]:
     if not started:
         return "", []
     cell_name, cell = started[-1]
-    source = cell.get("source", "")
-    source = "".join(source) if isinstance(source, list) else source
-    return cell_name, [f"# Source of the cell that was running ({cell_name}):", *source.splitlines()]
+    return cell_name, cell_context(cell, f"Source of the cell that was running ({cell_name})")
 
 
 def read_notebook(path: Path) -> dict:
