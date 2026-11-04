@@ -23,6 +23,10 @@ The notebooks directory contains the output notebooks written by papermill. A no
 
 The output notebooks named after their path with the '/' replaced by '__' (e.g. 'notebooks__demos__demo.ipynb')
 are displayed with their original path (e.g. 'notebooks/demos/demo.ipynb').
+
+The notebooks directory can also contain the log of the notebooks run, as a '*.log' file. If the run failed outside of
+the notebooks (e.g. the docker images could not be pulled), the report displays the last command and the last error
+of this log, and its last lines.
 """
 
 import argparse
@@ -44,8 +48,21 @@ MAX_ERROR_LENGTH = 300  # in the table
 MAX_TRACEBACK_LINES = 80  # in the details
 MAX_TRACEBACK_LENGTH = 6000
 MAX_OUTPUT_LINES = 30  # of the cells that failed without traceback
+MAX_LOG_LINES = 40  # of the run log, when the run failed outside of the notebooks
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+# In the run log: the commands traced by 'set -x', the error messages, and the noise of the docker pull progress
+LOG_COMMAND = re.compile(r"^\++ (?P<command>.+)")
+LOG_ERROR = re.compile(
+    r"error|fail|fatal|exception|traceback|denied|refused|cannot|unable|timed? ?out|no space left|not found|❌",
+    re.IGNORECASE,
+)
+LOG_NOISE = re.compile(
+    r"\[[=>\s]*\]\s+\S+/\S+\s*$"  # progress bar
+    r"|^\s*[0-9a-f]{12}\s+"  # docker layer status
+    r"(Waiting|Pulling fs layer|Verifying Checksum|Download complete|Pull complete|Already exists)\s*$",
+)
 
 
 @dataclass
@@ -56,6 +73,16 @@ class NotebookResult:
     error: str | None = None  # None if the notebook has passed
     cell: str = ""
     traceback: list[str] = field(default_factory=list)
+
+
+@dataclass
+class LogError:
+    """Error of the notebooks run log, when the run failed outside of the notebooks"""
+
+    name: str  # log file name
+    command: str  # last command traced by 'set -x' before the error
+    error: str  # last error message
+    tail: list[str]  # last lines of the log
 
 
 def display_name(path: Path, root: Path) -> str:
@@ -191,6 +218,35 @@ def read_results(notebooks_dir: Path) -> list[NotebookResult]:
     return sorted(results.values(), key=lambda result: result.name)
 
 
+def read_log_error(notebooks_dir: Path) -> LogError | None:
+    """Return the last command and error of the run log of the notebooks directory, or None if there is no log."""
+    logs = sorted(notebooks_dir.glob("*.log")) if notebooks_dir.is_dir() else []
+    if not logs:
+        return None
+    try:
+        text = logs[-1].read_text(encoding="utf-8", errors="replace")
+    except OSError as exception:
+        return LogError(logs[-1].name, "", f"Cannot read the log: {exception}", [])
+
+    # Keep the last text of the lines rewritten with carriage returns, remove the colors and the progress noise
+    lines = [strip_ansi(line.split("\r")[-1]).rstrip() for line in text.splitlines()]
+    lines = [line for line in lines if line.strip() and not LOG_NOISE.search(line)]
+
+    # Last error message that is not a traced command, and last command run before this error
+    error_index = next(
+        (
+            index
+            for index in range(len(lines) - 1, -1, -1)
+            if LOG_ERROR.search(lines[index]) and not LOG_COMMAND.match(lines[index])
+        ),
+        None,
+    )
+    end = len(lines) if error_index is None else error_index
+    command = next((match["command"] for line in reversed(lines[:end]) if (match := LOG_COMMAND.match(line))), "")
+    error = "" if error_index is None else lines[error_index].strip()
+    return LogError(logs[-1].name, command, error, lines[-MAX_LOG_LINES:])
+
+
 def truncate(text: str, length: int) -> str:
     """Truncate a text to a max length."""
     return text if len(text) <= length else text[: length - 1] + "…"
@@ -214,7 +270,7 @@ def code_block(lines: list[str]) -> str:
     return f"{fence}text\n{text}\n{fence}"
 
 
-def report_status(results: list[NotebookResult], outcome: str) -> str:
+def report_status(results: list[NotebookResult], outcome: str, log_error: LogError | None = None) -> str:
     """Return the global status of the report."""
     failed = sum(result.error is not None for result in results)
     passed = len(results) - failed
@@ -222,7 +278,8 @@ def report_status(results: list[NotebookResult], outcome: str) -> str:
         return f":x: {failed} failed, {passed} passed"
     if outcome == "failure":
         passed_text = f" ({passed} notebooks passed)" if passed else ""
-        return f":x: Failed outside of the notebooks execution{passed_text}, see the job logs"
+        see_logs = "" if log_error else ", see the job logs"
+        return f":x: Failed outside of the notebooks execution{passed_text}{see_logs}"
     if outcome in ("skipped", "cancelled"):
         return f":warning: Not run ({outcome})"
     if not results:
@@ -235,8 +292,28 @@ def details_block(summary: str, content: list[str]) -> list[str]:
     return [f"<details><summary>{summary}</summary>", "", *content, "", "</details>", ""]
 
 
-def write_report(results: list[NotebookResult], header: list[str]) -> str:
-    """Return the Markdown report, from the results and the header lines."""
+def log_error_lines(log_error: LogError) -> list[str]:
+    """Return the Markdown lines of the run log error."""
+    lines = [
+        "| Command | Error |",
+        "|:---|:---|",
+        f"| {table_cell(log_error.command) if log_error.command else ''} "
+        f"| {table_cell(log_error.error or 'No error message found, see the end of the log')} |",
+        "",
+    ]
+    if log_error.tail:
+        lines += details_block(
+            f"End of <code>{html.escape(log_error.name)}</code>",
+            [code_block(log_error.tail)],
+        )
+    return lines
+
+
+def write_report(results: list[NotebookResult], header: list[str], log_error: LogError | None = None) -> str:
+    """
+    Return the Markdown report, from the results and the header lines.
+    The run log error is displayed if given and no notebook has failed.
+    """
     failed = [result for result in results if result.error is not None]
     passed = [result for result in results if result.error is None]
     footer = [f"###### _updated: {datetime.now(UTC):%Y-%m-%d %H:%M:%S} (UTC)_"]
@@ -245,6 +322,8 @@ def write_report(results: list[NotebookResult], header: list[str]) -> str:
         return len("\n".join(lines + new_lines + footer)) <= MAX_REPORT_LENGTH
 
     lines = [*header, ""]
+    if log_error and not failed:
+        lines += log_error_lines(log_error)
     if failed:
         lines += ["| Notebook | Cell | Error |", "|:---|:---:|:---|"]
         lines += [f"| `{result.name}` | {result.cell} | {table_cell(result.error or '')} |" for result in failed]
@@ -289,7 +368,11 @@ def main():
 
     results = read_results(args.notebooks_dir)
 
-    header = [args.marker, f"### {args.title}", f"- **Result**: {report_status(results, args.outcome)}"]
+    # The run log is only useful if the run failed outside of the notebooks
+    failed = sum(result.error is not None for result in results)
+    log_error = read_log_error(args.notebooks_dir) if args.outcome == "failure" and not failed else None
+
+    header = [args.marker, f"### {args.title}", f"- **Result**: {report_status(results, args.outcome, log_error)}"]
     if args.commit:
         header.append(f"- **Commit**: {args.commit}")
     links = []
@@ -300,9 +383,8 @@ def main():
     if links:
         header.append(f"- **Details**: {' · '.join(links)}")
 
-    print(write_report(results, header), end="")
+    print(write_report(results, header, log_error), end="")
 
-    failed = sum(result.error is not None for result in results)
     print(f"{failed} failed notebooks, {len(results) - failed} passed notebooks", file=sys.stderr)
     if github_output := os.getenv("GITHUB_OUTPUT"):
         with open(github_output, "a", encoding="utf-8") as file:

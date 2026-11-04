@@ -14,14 +14,18 @@
 
 name: report-notebooks
 description: >
-  Report the notebooks executed by papermill (e.g. the rs-demo notebooks): the failed notebooks with their exact error,
+  Report the notebooks executed by papermill (e.g. the rs-demo notebooks): the failed notebooks with their exact error
+  (or the error of the run itself, from its log),
   in the job summary and in a pull request comment. Only one comment is kept per pull request and title: it is updated
   by each new run.
   The job needs the 'pull-requests: write' permission.
 
 inputs:
   notebooks-dir:
-    description: Directory of the output notebooks written by papermill, see report_notebooks.py
+    description: >
+      Directory of the output notebooks written by papermill, see report_notebooks.py. It can also contain the log
+      of the notebooks run, as a '*.log' file: if the run failed outside of the notebooks, the report displays
+      the last command and error of this log.
     required: true
   outcome:
     description: Outcome of the step that ran the notebooks, as 'steps.<id>.outcome'
