@@ -104,7 +104,6 @@ jobs:
         caller-ref: ${{ fromJson(needs.all-repos.outputs.info)[matrix.repo]['ref'] }}
         caller-ref_name: ${{ fromJson(needs.all-repos.outputs.info)[matrix.repo]['ref-name'] }}
         python-version: ${{ matrix.python-version }}
-        poetry-version: ${{ matrix.poetry-version }}
         ignore-bandit-errors: ${{ matrix.ignore-bandit-errors }}
         ignore-flake8-errors: ${{ matrix.ignore-flake8-errors }}
         ignore-mypy-errors: ${{ matrix.ignore-mypy-errors }}
@@ -127,7 +126,6 @@ jobs:
 
           # Default option values, copied from reusable-check-quality.yml
           - python-version: 3.13.18
-          - poetry-version: 2.4.1 # same as .github/actions/setup-poetry/action.yml
           - ignore-bandit-errors: false
           - ignore-flake8-errors: false
           - ignore-mypy-errors: false

@@ -33,8 +33,8 @@ on:
         description: Main python version (only for Python projects)
         type: string
         default: 3.13.18
-      poetry-version:
-        description: Poetry version (when applicable)
+      uv-version:
+        description: uv version
         type: string
         required: false
       ignore-bandit-errors:
@@ -342,16 +342,33 @@ jobs:
           repository: ${{ inputs.caller-repository }}
           ref: ${{ inputs.caller-ref }}
 
-      - uses: RS-PYTHON/actions/.github/actions/setup-poetry@develop
+      # Find how to install the project that contains the current tests/ dir:
+      #   - uv: the project or its uv workspace has a uv.lock file
+      #   - pip: other projects, installed with 'uv pip'
+      - id: tool
+        name: Find the project tool
+        run: |
+          set -x
+          proj_dir=$(dirname ${{ matrix.tests-dir }}) # parent dir of the tests/ dir
+          tool=pip
+          # Search for a uv.lock file in the project dir or its parents (uv workspace)
+          dir=$(realpath "$proj_dir")
+          while [[ "$dir" == "$(pwd)"* ]]; do
+            [[ -f "$dir/uv.lock" ]] && tool=uv && break
+            dir=$(dirname "$dir")
+          done
+          echo tool=$tool >> $GITHUB_OUTPUT
+
+      - uses: RS-PYTHON/actions/.github/actions/setup-uv@develop
         with:
           python-version: ${{ matrix.python-version }}
-          poetry-version: ${{ inputs.poetry-version }}
+          uv-version: ${{ inputs.uv-version }}
 
       - id: run
         name: Install and test ${{ matrix.tests-dir }}
         env:
           cov-dirs: ${{ inputs.cov-dirs }}
-          python-version: ${{ inputs.python-version }}
+          tool: ${{ steps.tool.outputs.tool }}
         run: |
           set -x
           root_dir=$(pwd)
@@ -362,26 +379,21 @@ jobs:
           [[ $dash_dir == . ]] && dash_dir=root # rename the . dir into root
           echo dash_dir=$dash_dir >> $GITHUB_OUTPUT
 
-          # Check if the current tests/ dir has a pyproject.toml file that contains the "poetry" string
-          if grep -q "poetry" ./pyproject.toml; then
-            prefix="poetry run"
+          prefix="uv run --no-sync"
+          pip_install="uv pip install --only-binary=:all:"
 
-            # Regenerate the poetry.lock file for non-standard python versions
-            [[ "${{ matrix.python-version }}" != "${{ env.python-version }}" ]] && poetry lock --regenerate
+          if [[ ${{ env.tool }} == uv ]]; then
+            # Install all the packages of the uv workspace (or the single project) with their default
+            # dependency groups (e.g. dev) and all their extras (like the pip installation below),
+            # from the uv.lock file. Fail if the lock file is not up to date.
+            # Don't build source distributions, except the packages listed in the no-binary-package
+            # setting of the project (sdist only, reviewed), and the workspace packages.
+            uv sync --locked --all-packages --all-extras --no-build
 
-            # Install the poetry project from the current tests/dir
-            poetry install
-            poetry install --with dev || true
-
-          # Else install with uv (faster than pip)
+          # Else install with uv pip (faster than pip)
           else
-            # Remove poetry to avoid any conflicts
-            pip uninstall -y poetry || true
-
-            prefix="uv run"
             rm -rf ./.venv
-            pip install --only-binary=:all: uv
-            uv venv --python ${{ env.python-version }}
+            uv venv
             uv pip install --only-binary=:all: pip
             uv pip install .
             uv pip install .[dev] || true
@@ -389,9 +401,14 @@ jobs:
             uv pip install .[instruments] || true
           fi
 
-          $prefix pip install --only-binary=:all: pytest-error-for-skips # for pytest --error-for-skips
-          $prefix -q opentelemetry-bootstrap -a install || true # install otel instrumentation packages for dependencies
-          $prefix pip list
+          $pip_install pytest-error-for-skips # for pytest --error-for-skips
+
+          # Install the otel instrumentation packages for the installed dependencies
+          otel_requirements=$($prefix opentelemetry-bootstrap -a requirements) || true
+          if [[ -n "$otel_requirements" ]]; then
+            $pip_install $otel_requirements || true
+          fi
+          uv pip list
 
           # Set --cov args, replace ',' by ' '
           cov_dirs=${{ env.cov-dirs }}

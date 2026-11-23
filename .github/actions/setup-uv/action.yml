@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: poetry-install
-description: Install Python and Poetry
+name: setup-uv
+description: Install Python and uv
 
 inputs:
   python-version:
     description: "Python version"
     required: false
-  poetry-version:
-    description: "Poetry version"
+  uv-version:
+    description: "uv version"
     required: false
 
 runs:
@@ -30,10 +30,11 @@ runs:
       name: Set environment
       env:
         INPUT_PYTHON_VERSION: ${{ inputs.python-version }}
-        INPUT_POETRY_VERSION: ${{ inputs.poetry-version }}
+        INPUT_UV_VERSION: ${{ inputs.uv-version }}
       run: |
         set -x
 
+        # Priority: environment variable, then action input, then default value
         if [[ -n $PYTHON_VERSION ]]; then
           python_version=$PYTHON_VERSION
         elif [[ -n $INPUT_PYTHON_VERSION ]]; then
@@ -42,30 +43,33 @@ runs:
           python_version=3.13.18
         fi
 
-        if [[ -n $POETRY_VERSION ]]; then
-          poetry_version=$POETRY_VERSION
-        elif [[ -n $INPUT_POETRY_VERSION ]]; then
-          poetry_version=$INPUT_POETRY_VERSION
+        if [[ -n $UV_VERSION ]]; then
+          uv_version=$UV_VERSION
+        elif [[ -n $INPUT_UV_VERSION ]]; then
+          uv_version=$INPUT_UV_VERSION
         else
-          poetry_version=2.4.1
+          uv_version=0.13.10
         fi
 
         echo python-version=$python_version >> "$GITHUB_OUTPUT"
-        echo poetry-version=$poetry_version >> "$GITHUB_OUTPUT"
+        echo uv-version=$uv_version >> "$GITHUB_OUTPUT"
       shell: bash
 
-    - uses: actions/setup-python@v6
+    - uses: actions/setup-python@v7
       with:
         python-version: ${{ steps.set-env.outputs.python-version }}
-        # NOTE: remove the poetry cache because it's not so fast.
-        # Note that to make it work, you need to run actions/checkout@v6
-        # with: ref: ${{ case(github.event_name == 'pull_request', github.head_ref, '') }}
-        # Then follow https://github.com/actions/setup-python/blob/v6/docs/advanced-usage.md#caching-packages
-        # cache: poetry
 
-    - name: Install poetry
+    - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      with:
+        version: ${{ steps.set-env.outputs.uv-version }}
+
+    # Use the python interpreter installed above (the first one in the PATH) in all the next uv commands,
+    # don't download other versions. NOTE: don't set UV_PYTHON, it would make 'uv pip' install the packages
+    # into this python interpreter instead of the project virtual environment.
+    - name: Configure uv
       run: |
         set -x
-        pip install --only-binary=:all: poetry==${{ steps.set-env.outputs.poetry-version }}
-        pip install --only-binary=:all: poetry-dynamic-versioning==1.10.0
+        echo UV_PYTHON_PREFERENCE=only-system >> $GITHUB_ENV
+        uv --version
+        python --version
       shell: bash

@@ -37,7 +37,7 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 ```
 
-The other inputs (Python and Poetry versions, directories covered by the tests, Sonar exclusions, tools whose errors
+The other inputs (Python and uv versions, directories covered by the tests, Sonar exclusions, tools whose errors
 are ignored...) are described in the workflow file.
 
 Every repository that runs Trivy scans (with `reusable-check-quality.yml`, `publish-docker` or directly) must also
@@ -60,7 +60,7 @@ jobs:
 
 | Action | Description |
 |---|---|
-| [build-wheel](.github/actions/build-wheel/action.yml) | Build the wheel and sdist packages of a [Poetry](https://python-poetry.org/) project. |
+| [build-wheel](.github/actions/build-wheel/action.yml) | Build the wheel and sdist packages of a [uv](https://docs.astral.sh/uv/) project. |
 | [cancel-workflow-runs](.github/actions/cancel-workflow-runs/action.yml) | Cancel the workflow runs of any repository, to avoid duplicate runs of the same workflow. |
 | [get-image-tag](.github/actions/get-image-tag/action.yml) | Return the first Docker image tag that exists in a list, e.g. `does-not-exist,latest` returns `latest`. |
 | [get-repo-branch](.github/actions/get-repo-branch/action.yml) | Return the first branch of a git repository that exists in a list, e.g. `does-not-exist,develop` returns `develop`. |
@@ -68,7 +68,7 @@ jobs:
 | [report-notebooks](.github/actions/report-notebooks/action.yml) | Report the notebooks executed by [papermill](https://papermill.readthedocs.io/) (e.g. the [rs-demo](https://github.com/RS-PYTHON/rs-demo) notebooks): a table of the failed notebooks with their exact error (or the error of the run itself, from its log), in the job summary and in a pull request comment, updated by each new run. |
 | [restore-trivy-cache](.github/actions/restore-trivy-cache/action.yml) | Restore the Trivy databases saved by `reusable-update-trivy-cache.yml` and skip their update in the next Trivy steps (to call before `aquasecurity/trivy-action` with `cache: false`). |
 | [set-binary-env](.github/actions/set-binary-env/action.yml) | Set the variables of the publication of the Docker images from the git context: branch name, Docker tags, debug mode. |
-| [setup-poetry](.github/actions/setup-poetry/action.yml) | Install Python and Poetry. |
+| [setup-uv](.github/actions/setup-uv/action.yml) | Install Python and [uv](https://docs.astral.sh/uv/). |
 | [tag-push-docker](.github/actions/tag-push-docker/action.yml) | Tag and push the temporary Docker images with their final tags, after the tests have passed. |
 
 Usage: `uses: RS-PYTHON/actions/.github/actions/<action>@develop`.
