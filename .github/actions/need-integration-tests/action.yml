@@ -1,0 +1,59 @@
+# Copyright 2023-2026 Airbus, CS Group
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: need-integration-tests
+description: Check if the integration tests (Docker images + rs-demo) must run
+
+# The integration tests are needed in all cases, except for the Dependabot pull requests that only update:
+#   - GitHub Actions: they don't change the Docker images, and the workflows are tested by the other checks
+#   - development dependencies (pytest, linters ...): they are not installed in the Docker images, and the
+#     pytest tests run in all the pull requests
+# A library update can break the integration tests with side effects that pytest does not see, so all the
+# other updates (production or indirect dependencies) must run them.
+# In case of doubt (e.g. the Dependabot metadata cannot be read), the integration tests are needed.
+
+outputs:
+  needed:
+    description: "'true' if the integration tests must run, else 'false'"
+    value: ${{ steps.check.outputs.needed }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: metadata
+      name: Read the Dependabot metadata
+      if: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' }}
+      continue-on-error: true # e.g. if someone pushed a commit to the Dependabot pull request
+      uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+    - id: check
+      name: Check the updated dependencies
+      env:
+        IS_DEPENDABOT: ${{ steps.metadata.outcome == 'success' }}
+        UPDATED_DEPENDENCIES: ${{ steps.metadata.outputs.updated-dependencies-json }}
+      run: |
+        set -x
+        needed=true
+
+        if [[ "$IS_DEPENDABOT" == true ]]; then
+          # Not needed if all the updated dependencies are GitHub Actions or development dependencies
+          if jq -e 'length > 0 and all(.[]; ((.packageEcosystem // "") | test("^github[-_]actions$"))
+                    or .dependencyType == "direct:development")' <<< "$UPDATED_DEPENDENCIES"; then
+            needed=false
+          fi
+        fi
+
+        echo "needed=$needed" >> "$GITHUB_OUTPUT"
+        echo "Integration tests needed: $needed" >> "$GITHUB_STEP_SUMMARY"
+      shell: bash

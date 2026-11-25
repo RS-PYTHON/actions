@@ -33,10 +33,10 @@ inputs:
     required: true
   dockerhub_username:
     description: vars.DOCKERHUB_USERNAME
-    required: true
+    required: false
   dockerhub_token:
-    description: secrets.DOCKERHUB_TOKEN
-    required: true
+    description: secrets.DOCKERHUB_TOKEN (empty for the Dependabot pull requests, that don't have access to the secrets)
+    required: false
   github_token:
     description: secrets.GITHUB_TOKEN
     required: true
@@ -77,6 +77,7 @@ runs:
 
     # Login to Docker Hub to increase pull quota from 100 to 200 per 6 hours
     - name: Log in to Docker Hub
+      if: ${{ inputs.dockerhub_username != '' && inputs.dockerhub_token != '' }}
       uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
       with:
         username: ${{ inputs.dockerhub_username }}
