@@ -13,7 +13,7 @@
 # limitations under the License.
 
 name: build-wheel
-description: Build wheel and sdist
+description: Build wheel and sdist of a uv project
 
 # WARNING, needs:
 # - uses: actions/checkout@v6
@@ -51,21 +51,24 @@ runs:
         echo "PACKAGE_DIRECTORY=${PACKAGE_DIRECTORY}" >> $GITHUB_ENV
       shell: bash
 
-    - uses: RS-PYTHON/actions/.github/actions/setup-poetry@develop
+    - uses: RS-PYTHON/actions/.github/actions/setup-uv@develop
 
-    # Run 'poetry dynamic-versioning' from the root folder to find the version name, sed the result
+    # The version is calculated from git by the build backend (see [tool.uv-dynamic-versioning])
+    - name: Build wheel and sdist
+      run: |
+        set -x
+        cd ${PACKAGE_DIRECTORY}
+        rm -rf dist
+        uv build --out-dir dist
+      shell: bash
+
+    # The version name is read from the wheel filename: <name>-<version>-<python tag>-<abi tag>-<platform tag>.whl
     - name: Find version name
       id: version_name
       run: |
         set -x
-        echo "version_name=$(poetry dynamic-versioning |& sed -n 's|Version: ||p')" >> "$GITHUB_OUTPUT"
-      shell: bash
-
-    - name: Build wheel and sdist
-      run: |
-        set -x
-        cd ${{ env.PACKAGE_DIRECTORY }}
-        poetry build
+        wheel=$(basename ${PACKAGE_DIRECTORY}/dist/*.whl)
+        echo "version_name=$(cut -d- -f2 <<< "$wheel")" >> "$GITHUB_OUTPUT"
       shell: bash
 
     # Note: the wheel file is built in package_directory/dist
