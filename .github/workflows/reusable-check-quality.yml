@@ -163,7 +163,7 @@ jobs:
           >> $GITHUB_STEP_SUMMARY
 
       # Same steps as the pre-commit/action action, which is no longer maintained (Node.js 20 actions/cache)
-      - run: pip install --only-binary=:all: pre-commit==4.7.0
+      - run: 'pip install --only-binary=:all: pre-commit==4.7.0'
       - uses: actions/cache@v6
         with:
           path: ~/.cache/pre-commit
