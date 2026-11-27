@@ -162,7 +162,13 @@ jobs:
           your local git repository before committing."
           >> $GITHUB_STEP_SUMMARY
 
-      - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd
+      # Same steps as the pre-commit/action action, which is no longer maintained (Node.js 20 actions/cache)
+      - run: pip install --only-binary=:all: pre-commit==4.7.0
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit|${{ env.pythonLocation }}|${{ hashFiles('.pre-commit-config.yaml') }}
+      - run: pre-commit run --show-diff-on-failure --color=always --all-files
 
   check-license:
     runs-on: ubuntu-latest
@@ -194,7 +200,7 @@ jobs:
         uses: RS-PYTHON/actions/.github/actions/restore-trivy-cache@develop
 
       - name: Scan local filesystem
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
@@ -209,7 +215,7 @@ jobs:
       - name: Scan config files for misconfigurations
         if: always() && !cancelled()
         continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1

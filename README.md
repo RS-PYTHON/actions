@@ -65,12 +65,12 @@ jobs:
 | [get-image-tag](.github/actions/get-image-tag/action.yml) | Return the first Docker image tag that exists in a list, e.g. `does-not-exist,latest` returns `latest`. |
 | [get-repo-branch](.github/actions/get-repo-branch/action.yml) | Return the first branch of a git repository that exists in a list, e.g. `does-not-exist,develop` returns `develop`. |
 | [need-integration-tests](.github/actions/need-integration-tests/action.yml) | Check if the integration tests (Docker images and [rs-demo](https://github.com/RS-PYTHON/rs-demo) tests) must run: always, except for the Dependabot pull requests that only update GitHub Actions or development dependencies. |
-| [publish-docker](.github/actions/publish-docker/action.yml) | Build and push a Docker image, and scan it with Trivy. |
+| [publish-docker](.github/actions/publish-docker/action.yml) | Build and push a Docker image, and scan it with Trivy. The names of the pushed images are saved for `tag-push-docker`. |
 | [report-notebooks](.github/actions/report-notebooks/action.yml) | Report the notebooks executed by [papermill](https://papermill.readthedocs.io/) (e.g. the [rs-demo](https://github.com/RS-PYTHON/rs-demo) notebooks): a table of the failed notebooks with their exact error (or the error of the run itself, from its log), in the job summary and in a pull request comment, updated by each new run. |
 | [restore-trivy-cache](.github/actions/restore-trivy-cache/action.yml) | Restore the Trivy databases saved by `reusable-update-trivy-cache.yml` and skip their update in the next Trivy steps (to call before `aquasecurity/trivy-action` with `cache: false`). |
 | [set-binary-env](.github/actions/set-binary-env/action.yml) | Set the variables of the publication of the Docker images from the git context: branch name, Docker tags, debug mode. |
 | [setup-uv](.github/actions/setup-uv/action.yml) | Install Python and [uv](https://docs.astral.sh/uv/). |
-| [tag-push-docker](.github/actions/tag-push-docker/action.yml) | Tag and push the temporary Docker images with their final tags, after the tests have passed. |
+| [tag-push-docker](.github/actions/tag-push-docker/action.yml) | Tag and push the temporary Docker images of all the `publish-docker` steps of the workflow run (e.g. in a matrix) with their final tags, after the tests have passed. |
 
 Usage: `uses: RS-PYTHON/actions/.github/actions/<action>@develop`.
 

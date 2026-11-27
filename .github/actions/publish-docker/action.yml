@@ -128,12 +128,16 @@ runs:
         echo "all_docker_images=${all_docker_images}" >> "$GITHUB_ENV"
         echo "all_docker_images=${all_docker_images}" >> "$GITHUB_OUTPUT"
         echo "cache_image=${cache_image}" >> "$GITHUB_ENV"
+
+        # Artifact that saves the pushed images for tag-push-docker ('/' is not allowed in its name)
+        images_artifact="pushed-images-${DOCKER_IMAGE_BASE,,}"
+        echo "images_artifact=${images_artifact//\//_}" >> "$GITHUB_ENV"
       shell: bash
 
     # Extract metadata from Git reference and GitHub events
     - name: Extract Docker metadata
       id: meta
-      uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
       with:
         images: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }} # ghcr.io/RS-PYTHON/rs-server
 
@@ -156,14 +160,25 @@ runs:
         cache-to: type=registry,ref=${{ env.cache_image }},mode=max
       env:
         # Disable build record upload as GitHub artifact because of conflicts
-        # with other actions e.g. cloudposse/github-action-matrix-outputs-read
+        # with the artifacts downloaded by the calling workflows
         DOCKER_BUILD_RECORD_UPLOAD: false
+
+    # For tag-push-docker in a next job, e.g. after a matrix of publish-docker
+    - name: Save the pushed image names
+      run: echo "$all_docker_images" > "$RUNNER_TEMP/$images_artifact"
+      shell: bash
+    - uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.images_artifact }}
+        path: ${{ runner.temp }}/${{ env.images_artifact }}
+        overwrite: true # when the job is re-run
+        retention-days: 1
 
     - name: Restore the Trivy databases from the cache
       uses: RS-PYTHON/actions/.github/actions/restore-trivy-cache@develop
 
     - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       env:
         TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1

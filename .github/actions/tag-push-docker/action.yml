@@ -13,15 +13,12 @@
 # limitations under the License.
 
 name: tag-push-docker
-description: Tag and push Docker images
+description: Tag and push with new tags the Docker images pushed by all the publish-docker steps of the workflow run
 
 inputs:
   github_token:
     description: "secrets.GITHUB_TOKEN (required if you have a 'unauthorized: unauthenticated: User cannot be authenticated with the token provided.')"
     required: false
-  old_docker_images:
-    description: Old Docker images to retag, as a comma-separated list e.g. 'image1:old-tag,image2:old-tag'
-    required: true
   new_tags:
     description: New tags to add to old Docker images, as a comma-separated list e.g. 'new-tag1,new-tag2'
     required: true
@@ -46,12 +43,21 @@ runs:
       run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
       shell: bash
 
+    - name: Download the names of the images pushed by publish-docker
+      uses: actions/download-artifact@v8
+      with:
+        pattern: pushed-images-*
+        merge-multiple: true
+        path: ${{ runner.temp }}/pushed-images
+
     - name: Tag and push Docker images
       env:
-        OLD_DOCKER_IMAGES: ${{ inputs.old_docker_images }}
         NEW_TAGS: ${{ inputs.new_tags }}
       run: |
         set -x
+
+        # One line per publish-docker step, e.g. 'image1:old-tag,image2:old-tag' (none if nothing was pushed)
+        OLD_DOCKER_IMAGES=$(cat "$RUNNER_TEMP"/pushed-images/* 2>/dev/null | paste -sd, || true)
 
         # Pull each pushed image in parallel
         for old_image in ${OLD_DOCKER_IMAGES//,/ }; do
